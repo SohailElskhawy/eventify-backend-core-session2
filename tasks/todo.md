@@ -11,19 +11,19 @@ Check items off as they land. AI-assisted work is verified line by line.
 
 ## Task 2 — Routes on the raw server
 
-- [ ] `GET /health` → `200` status + uptime
-- [ ] `GET /events` → `200` with hardcoded `Event[]`
-- [ ] `GET /events/:id` → `200` one event, or `404` `{ "error": "Event not found" }`
-- [ ] Any other path → `404` `{ "error": "Not found" }`
-- [ ] All bodies are JSON with `content-type: application/json`
-- [ ] Verified with `curl` across every table row (incl. garbage path + missing id)
+- [x] `GET /health` → `200` status + uptime
+- [x] `GET /events` → `200` with hardcoded `Event[]`
+- [x] `GET /events/:id` → `200` one event, or `404` `{ "error": "Event not found" }`
+- [x] Any other path → `404` `{ "error": "Not found" }`
+- [x] All bodies are JSON with `content-type: application/json`
+- [x] Verified with `curl` across every table row (incl. garbage path + missing id)
 
 ## Task 3 — Async data loading from `data/events.json`
 
-- [ ] `GET /events` (+ `/events/:id`) load `data/events.json` lazily on first request
-- [ ] `node:fs/promises`, async/await + `try/catch`, no `.then` chains
-- [ ] On read failure: log the error, return `500` JSON body, process never crashes
-- [ ] `/health` still answers `200` with data file deleted
+- [x] `GET /events` (+ `/events/:id`) load `data/events.json` lazily on first request
+- [x] `node:fs/promises`, async/await + `try/catch`, no `.then` chains
+- [x] On read failure: log the error, return `500` JSON body, process never crashes
+- [x] `/health` still answers `200` with data file deleted
 
 ## Task 4 — PR hygiene
 

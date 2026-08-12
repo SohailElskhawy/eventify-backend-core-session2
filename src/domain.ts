@@ -8,6 +8,7 @@
 // there is no `any` anywhere.
 
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
 
 
 type Role = "ATTENDEE" | "ORGANIZER" | "ADMIN";
@@ -41,12 +42,7 @@ interface Booking {
     createdAt: string;
 }
 
-const events: Event[] = [
-    { "id": "evt-1", "title": "JS 101", "description": "JavaScript from zero ceremony", "venue": "Room 4", "startsAt": "2026-09-14T18:00:00Z", "capacity": 30, "priceCents": 0, "organizerId": "usr-1", "createdAt": "2026-08-01T09:00:00Z" },
-    { "id": "evt-2", "title": "TS at Work", "description": "Types that earn their keep", "venue": null, "startsAt": "2026-09-21T18:00:00Z", "capacity": 80, "priceCents": 1500, "organizerId": "usr-1", "createdAt": "2026-08-01T09:05:00Z" },
-    { "id": "evt-3", "title": "Node Deep Dive", "description": "The event loop, for real", "venue": "Main Hall", "startsAt": "2026-10-02T18:00:00Z", "capacity": 25, "priceCents": 2500, "organizerId": "usr-2", "createdAt": "2026-08-02T10:00:00Z" },
-    { "id": "evt-4", "title": "API Design Live", "description": "Endpoints designed in the open", "venue": "Main Hall", "startsAt": "2026-11-20T18:00:00Z", "capacity": 125, "priceCents": 0, "organizerId": "usr-2", "createdAt": "2026-08-03T11:00:00Z" }
-]
+
 
 // Explanation: The `findById` function is a generic utility that searches for an item in an array 
 // based on its `id` property. 
@@ -59,7 +55,7 @@ function findById<T extends { id: string }>(array: T[], id: string): T | undefin
     return array.find((item) => item.id === id);
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
     if(req.method === "GET" && req.url === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "OK", uptime: process.uptime() }));
@@ -67,17 +63,38 @@ const server = createServer((req, res) => {
     }
 
     if (req.method === "GET" && req.url === "/events") {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "OK", events }));
-        return;
+        try {
+            const eventsData = await readFile("src/data/events.json", "utf-8");
+            const events: Event[] = JSON.parse(eventsData);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "OK", events }));
+            return;
+        } catch (error) {
+            console.error("Error reading events file:", error);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Internal Server Error" }));
+            return;
+        }
     }
 
     if (req.method === "GET" && req.url?.startsWith("/events/")) {
-        const eventId = req.url.split("/")[2];
-        const event = eventId && findById(events, eventId);
-        if (event) {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ status: "OK", event }));
+        try {
+            const eventsData = await readFile("src/data/events.json", "utf-8");
+            const events: Event[] = JSON.parse(eventsData);
+            const eventId = req.url.split("/")[2];
+            const event = eventId && findById(events, eventId);
+            if (event) {
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ status: "OK", event }));
+                return;
+            }
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Event not found" }));
+            return;
+        } catch (error) {
+            console.error("Error reading events file:", error);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Internal Server Error" }));
             return;
         }
     }
