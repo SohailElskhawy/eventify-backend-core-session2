@@ -65,11 +65,26 @@ const server = createServer((req, res) => {
         res.end(JSON.stringify({ status: "OK", uptime: process.uptime() }));
         return;
     }
+
+    if (req.method === "GET" && req.url === "/events") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "OK", events }));
+        return;
+    }
+
+    if (req.method === "GET" && req.url?.startsWith("/events/")) {
+        const eventId = req.url.split("/")[2];
+        const event = eventId && findById(events, eventId);
+        if (event) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "OK", event }));
+            return;
+        }
+    }
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not Found" }));
 });
 
 server.listen(3000, () => {
     console.log("Server listening on port 3000");
-    console.log("Health check endpoint available at http://localhost:3000/health");
 });
