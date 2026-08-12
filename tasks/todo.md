@@ -27,12 +27,12 @@ Check items off as they land. AI-assisted work is verified line by line.
 
 ## Task 4 — PR hygiene
 
-- [ ] Working on a feature branch (`feat/session-1-server`) in logical commits
-- [ ] PR description: what was built + how to run it
-- [ ] PR description: which parts were AI-assisted and how they were verified
-- [ ] PR description: one concrete thing the agent got wrong and how it was caught
-- [ ] `tasks/todo.md` included in the PR (commit lands before the code)
+- [x] Working on a feature branch (`feat/session-1-server`) in logical commits
+- [x] PR description: what was built + how to run it
+- [x] PR description: which parts were AI-assisted and how they were verified
+- [x] PR description: one concrete thing the agent got wrong and how it was caught
+- [x] `tasks/todo.md` included in the PR (commit lands before the code)
 
 ## Stretch (optional)
 
-- [ ] `POST /events`: accumulate body chunks, parse JSON manually, validate by hand
+- [x] `POST /events`: accumulate body chunks, parse JSON manually, validate by hand

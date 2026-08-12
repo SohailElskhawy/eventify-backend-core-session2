@@ -8,7 +8,7 @@
 // there is no `any` anywhere.
 
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 
 type Role = "ATTENDEE" | "ORGANIZER" | "ADMIN";
@@ -55,8 +55,50 @@ function findById<T extends { id: string }>(array: T[], id: string): T | undefin
     return array.find((item) => item.id === id);
 }
 
+function parseNewEvent(input: unknown): Event {
+    if (typeof input !== "object" || input === null) {
+        throw new Error("body must be a JSON object");
+    }
+    const e = input as Record<string, unknown>;
+    const { title, description, venue, startsAt, capacity, priceCents, organizerId } = e;
+
+    if (typeof title !== "string" || title.length === 0) {
+        throw new Error("title must be a non-empty string");
+    }
+    if (typeof description !== "string") {
+        throw new Error("description must be a string");
+    }
+    if (venue !== null && typeof venue !== "string") {
+        throw new Error("venue must be a string or null");
+    }
+    if (typeof startsAt !== "string" || Number.isNaN(Date.parse(startsAt))) {
+        throw new Error("startsAt must be an ISO date string");
+    }
+    if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
+        throw new Error("capacity must be a positive integer");
+    }
+    if (typeof priceCents !== "number" || !Number.isInteger(priceCents) || priceCents < 0) {
+        throw new Error("priceCents must be a non-negative integer");
+    }
+    if (typeof organizerId !== "string" || organizerId.length === 0) {
+        throw new Error("organizerId must be a non-empty string");
+    }
+
+    return {
+        id: `evt-${Date.now()}`,
+        title,
+        description,
+        venue,
+        startsAt,
+        capacity,
+        priceCents,
+        organizerId,
+        createdAt: new Date().toISOString(),
+    };
+}
+
 const server = createServer(async (req, res) => {
-    if(req.method === "GET" && req.url === "/health") {
+    if (req.method === "GET" && req.url === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "OK", uptime: process.uptime() }));
         return;
@@ -97,6 +139,40 @@ const server = createServer(async (req, res) => {
             res.end(JSON.stringify({ error: "Internal Server Error" }));
             return;
         }
+    }
+
+    if (req.method === "POST" && req.url === "/events") {
+        let body = "";
+        req.on("data", (chunk) => {
+            body += chunk;
+        });
+        req.on("end", async () => {
+            let newEvent: Event;
+            try {
+                const payload: unknown = JSON.parse(body);
+                newEvent = parseNewEvent(payload);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : "Invalid request body";
+                res.writeHead(400, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: message }));
+                return;
+            }
+
+            try {
+                const eventsData = await readFile("src/data/events.json", "utf-8");
+                const events: Event[] = JSON.parse(eventsData);
+                await writeFile("src/data/events.json", JSON.stringify([...events, newEvent], null, 2));
+            } catch (error) {
+                console.error("Error persisting event:", error);
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Internal Server Error" }));
+                return;
+            }
+
+            res.writeHead(201, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "Created", event: newEvent }));
+        });
+        return;
     }
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not Found" }));
