@@ -5,7 +5,7 @@
 // The function returns the first matching object if found, or `undefined` if no match is found. 
 // This is useful for quickly retrieving 
 
-import { Event } from "./types.ts";
+import type { Event } from "./types.ts";
 
 // specific items from collections of users, events, r bookings in the application.
 export function findById<T extends { id: string }>(array: T[], id: string): T | undefined {

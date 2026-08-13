@@ -1,52 +1,41 @@
 import { createServer } from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
-import { Event } from "./types.ts"; 
+import type { Event } from "./types.ts";
 import { findById, parseNewEvent } from "./utils.ts";
-
-
+import { appendEvent, readEvents } from "./storage.ts";
+import { sendJson } from "./http.ts";
 
 const server = createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/health") {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "OK", uptime: process.uptime() }));
+        sendJson(res, 200, { status: "OK", uptime: process.uptime() });
         return;
     }
 
     if (req.method === "GET" && req.url === "/events") {
         try {
-            const eventsData = await readFile("src/data/events.json", "utf-8");
-            const events: Event[] = JSON.parse(eventsData);
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ status: "OK", events }));
-            return;
+            const events = await readEvents();
+            sendJson(res, 200, { status: "OK", events });
         } catch (error) {
             console.error("Error reading events file:", error);
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Internal Server Error" }));
-            return;
+            sendJson(res, 500, { error: "Internal Server Error" });
         }
+        return;
     }
 
     if (req.method === "GET" && req.url?.startsWith("/events/")) {
         try {
-            const eventsData = await readFile("src/data/events.json", "utf-8");
-            const events: Event[] = JSON.parse(eventsData);
+            const events = await readEvents();
             const eventId = req.url.split("/")[2];
             const event = eventId && findById(events, eventId);
             if (event) {
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ status: "OK", event }));
+                sendJson(res, 200, { status: "OK", event });
                 return;
             }
-            res.writeHead(404, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Event not found" }));
-            return;
+            sendJson(res, 404, { error: "Event not found" });
         } catch (error) {
             console.error("Error reading events file:", error);
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Internal Server Error" }));
-            return;
+            sendJson(res, 500, { error: "Internal Server Error" });
         }
+        return;
     }
 
     if (req.method === "POST" && req.url === "/events") {
@@ -61,29 +50,23 @@ const server = createServer(async (req, res) => {
                 newEvent = parseNewEvent(payload);
             } catch (error) {
                 const message = error instanceof Error ? error.message : "Invalid request body";
-                res.writeHead(400, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ error: message }));
+                sendJson(res, 400, { error: message });
                 return;
             }
 
             try {
-                const eventsData = await readFile("src/data/events.json", "utf-8");
-                const events: Event[] = JSON.parse(eventsData);
-                await writeFile("src/data/events.json", JSON.stringify([...events, newEvent], null, 2));
+                await appendEvent(newEvent);
             } catch (error) {
                 console.error("Error persisting event:", error);
-                res.writeHead(500, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ error: "Internal Server Error" }));
+                sendJson(res, 500, { error: "Internal Server Error" });
                 return;
             }
 
-            res.writeHead(201, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ status: "Created", event: newEvent }));
+            sendJson(res, 201, { status: "Created", event: newEvent });
         });
         return;
     }
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not Found" }));
+    sendJson(res, 404, { error: "Not Found" });
 });
 
 server.listen(3000, () => {
