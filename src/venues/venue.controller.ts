@@ -10,9 +10,9 @@ export function create(req: Request, res: Response): void {
 
 /** GET /v1/venues */
 export function list(_req: Request, res: Response): void {
-    const { limit } = res.locals.query as ListVenuesQuery;
-    const venues = venueService.listVenues(limit);
-    res.json(venues);
+    const { limit, offset } = res.locals.query as ListVenuesQuery;
+    const { data, total } = venueService.listVenues(limit, offset);
+    res.json({ data, total, limit, offset });
 }
 
 /** GET /v1/venues/:id */

@@ -14,9 +14,10 @@ export const createEventSchema = z.object({
 /** Schema for partially updating an event (PATCH body). */
 export const updateEventSchema = createEventSchema.partial();
 
-/** Schema for list query params. */
+/** Schema for list query params. Values arrive as strings from Express. */
 export const listEventsQuerySchema = z.object({
-    limit: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().optional().default(20),
+    offset: z.coerce.number().int().nonnegative().optional().default(0),
 });
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;

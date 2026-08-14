@@ -27,9 +27,14 @@ export function createEvent(input: CreateEventInput): Event {
     return event;
 }
 
-export function listEvents(limit?: number): Event[] {
+export interface PaginatedResult<T> {
+    data: T[];
+    total: number;
+}
+
+export function listEvents(limit: number, offset: number): PaginatedResult<Event> {
     const all = [...events.values()];
-    return limit !== undefined ? all.slice(0, limit) : all;
+    return { data: all.slice(offset, offset + limit), total: all.length };
 }
 
 export function getEventById(id: string): Event {

@@ -31,9 +31,14 @@ export function createVenue(input: CreateVenueInput): Venue {
     return venue;
 }
 
-export function listVenues(limit?: number): Venue[] {
+export interface PaginatedResult<T> {
+    data: T[];
+    total: number;
+}
+
+export function listVenues(limit: number, offset: number): PaginatedResult<Venue> {
     const all = [...venues.values()];
-    return limit !== undefined ? all.slice(0, limit) : all;
+    return { data: all.slice(offset, offset + limit), total: all.length };
 }
 
 export function getVenueById(id: string): Venue {
