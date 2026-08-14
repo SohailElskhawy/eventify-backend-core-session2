@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Venue, PaginatedResult } from "../domain.ts";
 import type { CreateVenueInput, UpdateVenueInput } from "./venue.schema.ts";
+import { paginate } from "../utils/http.ts";
 
 /** In-memory store — keyed by id for O(1) lookups. */
 const venues = new Map<string, Venue>();
@@ -40,14 +41,7 @@ export function createVenue(input: CreateVenueInput): Venue {
 }
 
 export function listVenues(page: number, limit: number): PaginatedResult<Venue> {
-    const all = [...venues.values()];
-    const offset = (page - 1) * limit;
-    return {
-        data: all.slice(offset, offset + limit),
-        total: all.length,
-        page,
-        limit,
-    };
+    return paginate([...venues.values()], page, limit);
 }
 
 export function getVenueById(id: string): Venue {

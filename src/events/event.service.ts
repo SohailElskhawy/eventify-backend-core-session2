@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Event, PaginatedResult } from "../domain.ts";
 import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
+import { paginate } from "../utils/http.ts";
 
 /** In-memory store — keyed by id for O(1) lookups. */
 const events = new Map<string, Event>();
@@ -52,16 +53,7 @@ export function listEvents(query: ListEventsQuery): PaginatedResult<Event> {
         filtered = filtered.filter((e) => new Date(e.startsAt).getTime() <= toTime);
     }
 
-    const total = filtered.length;
-    const offset = (page - 1) * limit;
-    const data = filtered.slice(offset, offset + limit);
-
-    return {
-        data,
-        total,
-        page,
-        limit,
-    };
+    return paginate(filtered, page, limit);
 }
 
 export function getEventById(id: string): Event {

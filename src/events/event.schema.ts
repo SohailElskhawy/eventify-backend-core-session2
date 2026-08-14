@@ -24,7 +24,10 @@ export const listEventsQuerySchema = z.strictObject({
     venue: z.string().trim().min(1, "venue cannot be empty").optional(),
     from: z.iso.datetime("from must be an ISO date string").optional(),
     to: z.iso.datetime("to must be an ISO date string").optional(),
-});
+}).refine(
+    (data) => !data.from || !data.to || new Date(data.from).getTime() <= new Date(data.to).getTime(),
+    { message: "from date must be before or equal to to date", path: ["from"] },
+);
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
