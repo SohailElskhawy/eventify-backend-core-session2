@@ -3,3 +3,7 @@ dist/
 .env
 coverage/
 notestoai.md
+/src/generated/prisma
+/.agents
+/.claude
+/.windsurf

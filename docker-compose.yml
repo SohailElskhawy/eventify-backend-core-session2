@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eventify
+      POSTGRES_PASSWORD: "301077"
+      POSTGRES_DB: eventify
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventify -d eventify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://eventify:301077@db:5432/eventify"
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+    command: ["node", "--watch", "src/server.ts"]
+
+volumes:
+  pg_data:
