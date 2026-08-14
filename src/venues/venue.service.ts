@@ -1,77 +1,76 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
+import type { Venue, PaginatedResult } from "../domain.ts";
 import type { CreateVenueInput, UpdateVenueInput } from "./venue.schema.ts";
-
-export interface Venue {
-    id: string;
-    name: string;
-    address: string;
-    capacity: number;
-    contactEmail: string;
-    createdAt: string;
-}
 
 /** In-memory store — keyed by id for O(1) lookups. */
 const venues = new Map<string, Venue>();
 
-export function createVenue(input: CreateVenueInput): Venue {
-    // Unique-name constraint
-    for (const v of venues.values()) {
-        if (v.name === input.name) {
-            throw new HttpError(409, `A venue named "${input.name}" already exists`);
+/** Private DRY helper to find a venue or throw 404 */
+function findVenueOrFail(id: string): Venue {
+    const venue = venues.get(id);
+    if (!venue) {
+        throw new HttpError(404, "Venue not found");
+    }
+    return venue;
+}
+
+/** Case-insensitive venue name uniqueness check */
+function assertUniqueVenueName(name: string, excludeId?: string): void {
+    const normalized = name.trim().toLowerCase();
+    for (const venue of venues.values()) {
+        if (venue.id !== excludeId && venue.name.trim().toLowerCase() === normalized) {
+            throw new HttpError(409, `A venue named "${name}" already exists`);
         }
     }
+}
 
+export function createVenue(input: CreateVenueInput): Venue {
+    assertUniqueVenueName(input.name);
+
+    const now = new Date().toISOString();
     const venue: Venue = {
         id: randomUUID(),
         ...input,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
     };
     venues.set(venue.id, venue);
     return venue;
 }
 
-export interface PaginatedResult<T> {
-    data: T[];
-    total: number;
-}
-
-export function listVenues(limit: number, offset: number): PaginatedResult<Venue> {
+export function listVenues(page: number, limit: number): PaginatedResult<Venue> {
     const all = [...venues.values()];
-    return { data: all.slice(offset, offset + limit), total: all.length };
+    const offset = (page - 1) * limit;
+    return {
+        data: all.slice(offset, offset + limit),
+        total: all.length,
+        page,
+        limit,
+    };
 }
 
 export function getVenueById(id: string): Venue {
-    const venue = venues.get(id);
-    if (!venue) {
-        throw new HttpError(404, "Venue not found");
-    }
-    return venue;
+    return findVenueOrFail(id);
 }
 
 export function updateVenue(id: string, input: UpdateVenueInput): Venue {
-    const venue = venues.get(id);
-    if (!venue) {
-        throw new HttpError(404, "Venue not found");
+    const existing = findVenueOrFail(id);
+
+    if (input.name !== undefined && input.name !== existing.name) {
+        assertUniqueVenueName(input.name, id);
     }
 
-    // If name is changing, enforce uniqueness
-    if (input.name !== undefined && input.name !== venue.name) {
-        for (const v of venues.values()) {
-            if (v.name === input.name) {
-                throw new HttpError(409, `A venue named "${input.name}" already exists`);
-            }
-        }
-    }
-
-    const updated: Venue = { ...venue, ...input };
+    const updated: Venue = {
+        ...existing,
+        ...input,
+        updatedAt: new Date().toISOString(),
+    };
     venues.set(id, updated);
     return updated;
 }
 
 export function deleteVenue(id: string): void {
-    if (!venues.has(id)) {
-        throw new HttpError(404, "Venue not found");
-    }
+    findVenueOrFail(id);
     venues.delete(id);
 }

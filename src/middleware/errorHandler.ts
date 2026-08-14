@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { ZodError } from "zod";
 import { HttpError } from "../errors/HttpError.ts";
 
 /**
@@ -20,16 +21,9 @@ export function errorHandler(
         return;
     }
 
-    // Zod 4 validation errors — duck-type check for the `issues` array
-    if (
-        typeof err === "object" &&
-        err !== null &&
-        "issues" in err &&
-        Array.isArray((err as { issues: unknown[] }).issues)
-    ) {
-        const issues = (err as { issues: Array<{ path: (string | number)[]; message: string }> }).issues;
+    if (err instanceof ZodError) {
         const fieldErrors: Record<string, string[]> = {};
-        for (const issue of issues) {
+        for (const issue of err.issues) {
             const key = issue.path.join(".") || "_root";
             (fieldErrors[key] ??= []).push(issue.message);
         }
