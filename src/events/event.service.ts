@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Event, PaginatedResult } from "../domain.ts";
-import type { CreateEventInput, UpdateEventInput } from "./event.schema.ts";
+import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
+import { paginate } from "../utils/http.ts";
 
 /** In-memory store — keyed by id for O(1) lookups. */
 const events = new Map<string, Event>();
@@ -36,15 +37,23 @@ export function createEvent(input: CreateEventInput): Event {
     return event;
 }
 
-export function listEvents(page: number, limit: number): PaginatedResult<Event> {
-    const all = [...events.values()];
-    const offset = (page - 1) * limit;
-    return {
-        data: all.slice(offset, offset + limit),
-        total: all.length,
-        page,
-        limit,
-    };
+export function listEvents(query: ListEventsQuery): PaginatedResult<Event> {
+    const { page, limit, venue, from, to } = query;
+    let filtered = [...events.values()];
+
+    if (venue !== undefined) {
+        filtered = filtered.filter((e) => e.venue === venue);
+    }
+    if (from !== undefined) {
+        const fromTime = new Date(from).getTime();
+        filtered = filtered.filter((e) => new Date(e.startsAt).getTime() >= fromTime);
+    }
+    if (to !== undefined) {
+        const toTime = new Date(to).getTime();
+        filtered = filtered.filter((e) => new Date(e.startsAt).getTime() <= toTime);
+    }
+
+    return paginate(filtered, page, limit);
 }
 
 export function getEventById(id: string): Event {

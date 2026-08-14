@@ -1,11 +1,7 @@
 import type { Request, Response } from "express";
 import * as venueService from "./venue.service.ts";
 import type { CreateVenueInput, UpdateVenueInput, ListVenuesQuery } from "./venue.schema.ts";
-
-function getId(req: Request): string {
-    const { id } = req.params;
-    return typeof id === "string" ? id : (id?.[0] ?? "");
-}
+import { getRouteParam } from "../utils/http.ts";
 
 /** POST /v1/venues */
 export function create(req: Request, res: Response): void {
@@ -22,18 +18,18 @@ export function list(_req: Request, res: Response): void {
 
 /** GET /v1/venues/:id */
 export function getById(req: Request, res: Response): void {
-    const venue = venueService.getVenueById(getId(req));
+    const venue = venueService.getVenueById(getRouteParam(req));
     res.json(venue);
 }
 
 /** PATCH /v1/venues/:id */
 export function update(req: Request, res: Response): void {
-    const venue = venueService.updateVenue(getId(req), req.body as UpdateVenueInput);
+    const venue = venueService.updateVenue(getRouteParam(req), req.body as UpdateVenueInput);
     res.json(venue);
 }
 
 /** DELETE /v1/venues/:id */
 export function remove(req: Request, res: Response): void {
-    venueService.deleteVenue(getId(req));
+    venueService.deleteVenue(getRouteParam(req));
     res.status(204).end();
 }
