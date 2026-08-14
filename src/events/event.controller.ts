@@ -15,8 +15,8 @@ export function create(req: Request, res: Response): void {
 
 /** GET /v1/events */
 export function list(_req: Request, res: Response): void {
-    const { page, limit } = res.locals.query as ListEventsQuery;
-    const paginated = eventService.listEvents(page, limit);
+    const query = res.locals.query as ListEventsQuery;
+    const paginated = eventService.listEvents(query);
     res.json(paginated);
 }
 

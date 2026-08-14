@@ -7,7 +7,7 @@ export const createVenueSchema = z.strictObject({
     capacity: z.number().int().positive("capacity must be a positive integer").max(100_000, "capacity cannot exceed 100,000"),
     contactEmail: z.preprocess(
         (val) => (typeof val === "string" ? val.trim().toLowerCase() : val),
-        z.string().email("contactEmail must be a valid email"),
+        z.email("contactEmail must be a valid email"),
     ),
 });
 
