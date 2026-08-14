@@ -10,9 +10,9 @@ export function create(req: Request, res: Response): void {
 
 /** GET /v1/events */
 export function list(_req: Request, res: Response): void {
-    const { limit } = res.locals.query as ListEventsQuery;
-    const events = eventService.listEvents(limit);
-    res.json(events);
+    const { limit, offset } = res.locals.query as ListEventsQuery;
+    const { data, total } = eventService.listEvents(limit, offset);
+    res.json({ data, total, limit, offset });
 }
 
 /** GET /v1/events/:id */
