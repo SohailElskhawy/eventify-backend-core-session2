@@ -3,23 +3,39 @@ import * as bookingService from "./booking.service.ts";
 import type { CreateBookingInput } from "./booking.schema.ts";
 import { getRouteParam } from "../utils/http.ts";
 
-/** Hardcoded user id until authentication arrives in Session 4 */
-const CURRENT_USER_ID = "user-1";
+/**
+ * Temporary user-id resolution until Session 4 adds real auth.
+ *
+ * The `x-user-id` header is the stand-in for a JWT-extracted subject —
+ * the parallel-bookings script sets it per-request so 20 distinct users
+ * can hit the same endpoint simultaneously. If the header is absent
+ * (e.g. manual curl testing), we fall back to a seeded default user.
+ *
+ * Session 4 will replace this with `req.user.id` populated by auth middleware.
+ */
+const DEFAULT_USER_ID = "00000000-0000-4000-8000-000000000003"; // Carol Attendee from seed
+const USER_ID_HEADER = "x-user-id";
+
+function resolveUserId(req: Request): string {
+    const header = req.get(USER_ID_HEADER);
+    return header && header.trim().length > 0 ? header.trim() : DEFAULT_USER_ID;
+}
 
 /** POST /v1/bookings */
-export function create(req: Request, res: Response): void {
-    const booking = bookingService.createBooking(CURRENT_USER_ID, req.body as CreateBookingInput);
+export async function create(req: Request, res: Response): Promise<void> {
+    const userId = resolveUserId(req);
+    const booking = await bookingService.createBooking(userId, req.body as CreateBookingInput);
     res.status(201).json(booking);
 }
 
 /** GET /v1/bookings/:id */
-export function getById(req: Request, res: Response): void {
-    const booking = bookingService.getBookingById(getRouteParam(req));
+export async function getById(req: Request, res: Response): Promise<void> {
+    const booking = await bookingService.getBookingById(getRouteParam(req));
     res.json(booking);
 }
 
 /** DELETE /v1/bookings/:id */
-export function remove(req: Request, res: Response): void {
-    const booking = bookingService.cancelBooking(getRouteParam(req));
+export async function remove(req: Request, res: Response): Promise<void> {
+    const booking = await bookingService.cancelBooking(getRouteParam(req));
     res.json(booking);
 }
