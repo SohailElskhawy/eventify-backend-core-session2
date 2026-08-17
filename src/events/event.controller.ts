@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import * as eventService from "./event.service.ts";
 import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
-import { getRouteParam } from "../utils/http.ts";
+import { getRouteParam, getValidatedQuery } from "../utils/http.ts";
 
 /** POST /v1/events */
 export async function create(req: Request, res: Response): Promise<void> {
@@ -11,7 +11,7 @@ export async function create(req: Request, res: Response): Promise<void> {
 
 /** GET /v1/events */
 export async function list(_req: Request, res: Response): Promise<void> {
-    const query = res.locals.query as ListEventsQuery;
+    const query = getValidatedQuery<ListEventsQuery>(res);
     const paginated = await eventService.listEvents(query);
     res.json(paginated);
 }
