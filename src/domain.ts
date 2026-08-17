@@ -19,16 +19,6 @@ export interface Event {
     updatedAt: string;
 }
 
-export interface Venue {
-    id: string;
-    name: string;
-    address: string;
-    capacity: number;
-    contactEmail: string;
-    createdAt: string;
-    updatedAt: string;
-}
-
 export interface User {
     id: string;
     email: string;

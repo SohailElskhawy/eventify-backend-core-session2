@@ -1,6 +1,6 @@
 import express from "express";
-import { venueRouter } from "./venues/venue.routes.ts";
 import { eventRouter } from "./events/event.routes.ts";
+import { bookingRouter } from "./bookings/booking.routes.ts";
 import { notFound } from "./middleware/notFound.ts";
 import { errorHandler } from "./middleware/errorHandler.ts";
 
@@ -15,8 +15,8 @@ app.get("/health", (_req, res) => {
 });
 
 // ── API routes ──────────────────────────────────────────────
-app.use("/v1/venues", venueRouter);
 app.use("/v1/events", eventRouter);
+app.use("/v1/bookings", bookingRouter);
 
 // ── Error handling (must be last) ───────────────────────────
 app.use(notFound);

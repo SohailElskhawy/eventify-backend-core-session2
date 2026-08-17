@@ -1,38 +1,59 @@
-# Session 1 — Eventify's First Server
+# Session 3 — Bookings That Survive a Restart
 
-Check items off as they land. AI-assisted work is verified line by line.
+Plan-first rule: this file is the PR's first commit. Check items off as you go.
 
-## Task 1 — Domain types (`src/domain.ts`)
+## Phase 0 — Branch
+- [x] Branch `feat/session-3-bookings` from `feat/database` (no session-3 starter available; build from spec)
 
-- [x] `Role` and `BookingStatus` as literal unions
-- [x] `Event`, `User`, `Booking` interfaces matching the course contract exactly
-- [x] Generic `findById<T extends { id: string }>`
-- [x] `npm run typecheck` passes, no `any` anywhere
+## Phase 1 — Schema alignment (task 1 prerequisite)
+- [x] Add `enum BookingStatus { CONFIRMED CANCELLED WAITLISTED }` and `enum Role { ATTENDEE ORGANIZER ADMIN }`
+- [x] Keep `@@unique([userId, eventId])` on Booking
+- [x] `npx prisma migrate dev` to generate the diff migration
 
-## Task 2 — Routes on the raw server
+## Phase 2 — Config & env (task 1)
+- [x] Create `src/config.ts` with zod envSchema: `DATABASE_URL`, `PORT`, `NODE_ENV`
+- [x] Create `.env.example` with `DATABASE_URL`
+- [x] Update `prisma.config.ts`: register `prisma/seed.ts`, read `DATABASE_URL` (no implicit .env)
+- [x] Generator -> `prisma-client` with `output` in source tree; install `@prisma/adapter-pg` + `pg`
 
-- [x] `GET /health` → `200` status + uptime
-- [x] `GET /events` → `200` with hardcoded `Event[]`
-- [x] `GET /events/:id` → `200` one event, or `404` `{ "error": "Event not found" }`
-- [x] Any other path → `404` `{ "error": "Not found" }`
-- [x] All bodies are JSON with `content-type: application/json`
-- [x] Verified with `curl` across every table row (incl. garbage path + missing id)
+## Phase 3 — Event repository swap (task 1)
+- [x] Create `src/events/event.repository.ts` (Prisma): create, getById, list (page/limit + venue/from/to filters + `{data,page,limit,total}`), update, delete
+- [x] Refactor `event.service.ts` to async, delegate persistence to repository; remove in-memory `Map`
+- [x] Controllers stay unchanged in shape (become async only if service is async)
 
-## Task 3 — Async data loading from `data/events.json`
+## Phase 4 — Transactional bookings (task 2) — the heart
+- [x] Write `src/bookings/booking.service.ts`: `prisma.$transaction({ isolationLevel: Serializable })`
+  - [x] capacity check: `tx.booking.count({ where: { eventId, status: "CONFIRMED" } })` >= event.capacity -> handle (throw 409)
+  - [x] rebooking flip: `tx.booking.findUnique({ where: { userId_eventId } })` -> none=create, CANCELLED=update to CONFIRMED, CONFIRMED=throw 409, WAITLISTED=leave
+  - [x] create the CONFIRMED row
+  - [x] catch `P2002` -> throw `HttpError(409)`
+- [x] Fold function into `src/bookings/booking.service.ts`; replace in-memory `Map`
+- [x] `cancelBooking` = soft update to `CANCELLED` (row stays)
+- [x] Wire controller to `await` the now-async service; controller shape unchanged
+- [x] **Stretch:** retry loop on `P2034` / `DriverAdapterError` serialization conflicts (bounded retries with backoff, re-run whole tx)
 
-- [x] `GET /events` (+ `/events/:id`) load `data/events.json` lazily on first request
-- [x] `node:fs/promises`, async/await + `try/catch`, no `.then` chains
-- [x] On read failure: log the error, return `500` JSON body, process never crashes
-- [x] `/health` still answers `200` with data file deleted
+## Phase 5 — Seed script (task 3)
+- [x] `prisma/seed.ts`: 3+ users via upsert (ORGANIZER, ADMIN, ATTENDEE), 5 events (one capacity-5), some bookings
+- [x] 20 distinct users for the parallel script (upsert by email)
+- [x] Print the capacity-5 event id + 20 user ids so I can fill the fixture
+- [x] Idempotent: run twice -> no errors, no duplicates
 
-## Task 4 — PR hygiene
+## Phase 6 — Parallel proof (task 2 acceptance)
+- [x] `docker compose up -d` -> `npx prisma migrate dev` -> `npx prisma db seed`
+- [x] Fill `scripts/fixtures/parallel-users.json` (baseUrl, eventId, capacity, 20 {userId, token:""})
+- [x] `npm run dev` (t1) + `node scripts/parallel-bookings.ts` (t2)
+- [x] Tally: exactly 5x201, 15x409 (zero 500s with retry loop)
+- [x] psql: `SELECT status, COUNT(*) FROM "Booking" WHERE "eventId"='<id>' GROUP BY status;` -> 5 CONFIRMED
+- [x] cancel-then-rebook: DELETE one confirmed -> POST same user -> 201 CONFIRMED
 
-- [x] Working on a feature branch (`feat/session-1-server`) in logical commits
-- [x] PR description: what was built + how to run it
-- [x] PR description: which parts were AI-assisted and how they were verified
-- [x] PR description: one concrete thing the agent got wrong and how it was caught
-- [x] `tasks/todo.md` included in the PR (commit lands before the code)
+## Phase 7 — Index proof (task 4)
+- [x] Enable `log: ['query']` on PrismaClient
+- [x] Capture "bookings by user" SQL; `EXPLAIN ANALYZE` in psql -> save before plan
+- [x] Add `@@index([userId])` to Booking; `npx prisma migrate dev --name booking_user_idx`
+- [x] `EXPLAIN ANALYZE` again -> save after plan
+- [x] Write two sentences in my own words comparing them
 
-## Stretch (optional)
-
-- [x] `POST /events`: accumulate body chunks, parse JSON manually, validate by hand
+## Phase 8 — PR
+- [x] README: fresh-clone run steps (docker up -> migrate dev -> db seed -> npm run dev)
+- [x] PR description: run steps, task-4 before/after plans + two sentences, exit-ticket one sentence
+- [x] `npm run typecheck` + `npm run lint` green
