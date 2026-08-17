@@ -1,9 +1,10 @@
 import { prisma } from "../db/prisma.ts";
 import { Prisma } from "../generated/prisma/client.ts";
-import type { BookingStatus } from "../generated/prisma/client.ts";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Booking } from "../domain.ts";
 import type { CreateBookingInput } from "./booking.schema.ts";
+import * as bookingRepo from "./booking.repository.ts";
+import type { TxClient } from "./booking.repository.ts";
 
 /**
  * Transactional booking creation.
@@ -29,17 +30,10 @@ import type { CreateBookingInput } from "./booking.schema.ts";
  *   existing row CANCELLED   → flip back to CONFIRMED (same tx, same capacity check)
  *   existing row CONFIRMED   → duplicate — let P2002 fire → map to 409
  *   existing row WAITLISTED  → leave alone (promotion is Session 5's job)
- *
- * STRETCH:
- *   - Retry loop: catch P2034 (serialization failure), re-run the whole tx.
- *   - Waitlist: when the event is full, create WAITLISTED instead of 409.
  */
 
 /** Maximum retries on serialization conflicts (P2034 / 40001). */
 const MAX_RETRIES = 10;
-
-// Prisma's transaction client type — the exact type passed into $transaction(fn).
-type TxClient = Prisma.TransactionClient;
 
 /**
  * Checks whether an error is a Postgres/Prisma serialization conflict.
@@ -65,52 +59,38 @@ function isSerializationError(err: unknown): boolean {
 
 /**
  * The core transaction body — runs inside `prisma.$transaction`.
- * Every read and write goes through `tx`, NEVER `prisma` — touching `prisma`
- * here silently escapes the transaction and reopens the oversell race.
+ * Every read and write goes through `tx` in repository methods, NEVER `prisma`.
  */
-async function createBookingTx(
+async function executeBookingTransaction(
     tx: TxClient,
     userId: string,
     eventId: string,
 ): Promise<Booking> {
     // 1. Capacity check — count CONFIRMED bookings only.
-    //    CANCELLED and WAITLISTED rows don't consume capacity.
     const [confirmedCount, event] = await Promise.all([
-        tx.booking.count({ where: { eventId, status: "CONFIRMED" } }),
-        tx.event.findUniqueOrThrow({ where: { id: eventId } }),
+        bookingRepo.countConfirmedBookingsTx(tx, eventId),
+        bookingRepo.findEventCapacityTx(tx, eventId),
     ]);
 
     const isFull = confirmedCount >= event.capacity;
 
-    // 2. Rebooking: look up the existing row for this user+event pair.
-    //    @@unique([userId, eventId]) means at most one row ever exists.
-    const existing = await tx.booking.findUnique({
-        where: { userId_eventId: { userId, eventId } },
-    });
+    // 2. Rebooking: look up existing row for this user+event pair.
+    const existing = await bookingRepo.findBookingByUserAndEventTx(tx, userId, eventId);
 
     if (existing) {
-        switch (existing.status as BookingStatus) {
+        switch (existing.status) {
             case "CONFIRMED":
-                // Duplicate confirmed booking — 409.
                 throw new HttpError(409, "User already has a booking for this event");
 
             case "CANCELLED": {
                 if (isFull) {
                     throw new HttpError(409, "Event is at full capacity");
                 }
-                // Flip CANCELLED → CONFIRMED inside the same transaction.
-                // The capacity check above already ran under Serializable
-                // isolation, so this flip is safe.
-                const confirmed = await tx.booking.update({
-                    where: { id: existing.id },
-                    data: { status: "CONFIRMED" },
-                });
-                return toDomain(confirmed);
+                return bookingRepo.updateBookingStatusTx(tx, existing.id, "CONFIRMED");
             }
 
             case "WAITLISTED":
-                // Leave alone — promotion is Session 5's job.
-                return toDomain(existing);
+                return existing;
         }
     }
 
@@ -120,13 +100,12 @@ async function createBookingTx(
     }
 
     try {
-        const row = await tx.booking.create({
-            data: { userId, eventId, status: "CONFIRMED" },
+        return await bookingRepo.createBookingTx(tx, {
+            userId,
+            eventId,
+            status: "CONFIRMED",
         });
-        return toDomain(row);
     } catch (err) {
-        // P2002 = unique constraint violation on [userId, eventId].
-        // This happens if a concurrent tx inserted the same pair first.
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
             throw new HttpError(409, "User already has a booking for this event");
         }
@@ -136,8 +115,6 @@ async function createBookingTx(
 
 /**
  * Public entry point — wraps the transaction body in the retry loop.
- * On serialization failure under Serializable isolation, the whole transaction
- * is re-run from scratch with randomized backoff, up to MAX_RETRIES times.
  */
 export async function createBooking(userId: string, input: CreateBookingInput): Promise<Booking> {
     let lastError: unknown;
@@ -145,69 +122,39 @@ export async function createBooking(userId: string, input: CreateBookingInput): 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
             return await prisma.$transaction(
-                (tx) => createBookingTx(tx, userId, input.eventId),
+                (tx) => executeBookingTransaction(tx, userId, input.eventId),
                 { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
             );
         } catch (err) {
             if (isSerializationError(err)) {
                 lastError = err;
-                // Add randomized backoff (10-40ms) to reduce contention on retry
                 await new Promise((resolve) =>
                     setTimeout(resolve, Math.floor(Math.random() * 30) + 10),
                 );
                 continue;
             }
-            // HttpError (409, 404, etc.) or other domain errors — propagate immediately
             throw err;
         }
     }
 
-    // Exhausted retries — the database kept refusing the serialization.
     void lastError;
     throw new HttpError(503, "Could not complete booking due to concurrent conflicts — please retry");
 }
 
-// ── Read & cancel ───────────────────────────────────────────
+// ── Read & Cancel ───────────────────────────────────────────
 
 export async function getBookingById(id: string): Promise<Booking> {
-    const row = await prisma.booking.findUnique({ where: { id } });
-    if (!row) {
+    const booking = await bookingRepo.findBookingById(id);
+    if (!booking) {
         throw new HttpError(404, "Booking not found");
     }
-    return toDomain(row);
+    return booking;
 }
 
-/**
- * Soft cancel — the row stays, status flips to CANCELLED.
- * This is what enables rebooking: the @@unique([userId, eventId]) constraint
- * would block a second row, so we flip the existing one back to CONFIRMED
- * inside the transaction when the user rebooks.
- */
 export async function cancelBooking(id: string): Promise<Booking> {
-    try {
-        const row = await prisma.booking.update({
-            where: { id },
-            data: { status: "CANCELLED" },
-        });
-        return toDomain(row);
-    } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
-            throw new HttpError(404, "Booking not found");
-        }
-        throw err;
+    const cancelled = await bookingRepo.softCancelBooking(id);
+    if (!cancelled) {
+        throw new HttpError(404, "Booking not found");
     }
-}
-
-// ── Mapping helper ──────────────────────────────────────────
-
-type BookingRow = Prisma.BookingGetPayload<Record<string, never>>;
-
-function toDomain(row: BookingRow): Booking {
-    return {
-        id: row.id,
-        userId: row.userId,
-        eventId: row.eventId,
-        status: row.status as Booking["status"],
-        createdAt: row.createdAt.toISOString(),
-    };
+    return cancelled;
 }
