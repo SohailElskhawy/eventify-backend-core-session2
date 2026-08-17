@@ -1,70 +1,58 @@
-import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Venue, PaginatedResult } from "../domain.ts";
 import type { CreateVenueInput, UpdateVenueInput } from "./venue.schema.ts";
-import { paginate } from "../utils/http.ts";
+import * as venueRepo from "./venue.repository.ts";
 
-/** In-memory store — keyed by id for O(1) lookups. */
-const venues = new Map<string, Venue>();
+/**
+ * Venue service — orchestration & domain rules only.
+ * Persistence lives in venue.repository.ts; this layer never touches Prisma.
+ */
 
-/** Private DRY helper to find a venue or throw 404 */
-function findVenueOrFail(id: string): Venue {
-    const venue = venues.get(id);
+/** Case-insensitive venue name uniqueness check */
+async function assertUniqueVenueName(name: string, excludeId?: string): Promise<void> {
+    const existing = await venueRepo.findVenueByName(name, excludeId);
+    if (existing) {
+        throw new HttpError(409, `A venue named "${name}" already exists`);
+    }
+}
+
+export async function createVenue(input: CreateVenueInput): Promise<Venue> {
+    await assertUniqueVenueName(input.name);
+    return venueRepo.createVenue(input);
+}
+
+export async function listVenues(page: number, limit: number): Promise<PaginatedResult<Venue>> {
+    return venueRepo.listVenues(page, limit);
+}
+
+export async function getVenueById(id: string): Promise<Venue> {
+    const venue = await venueRepo.findVenueById(id);
     if (!venue) {
         throw new HttpError(404, "Venue not found");
     }
     return venue;
 }
 
-/** Case-insensitive venue name uniqueness check */
-function assertUniqueVenueName(name: string, excludeId?: string): void {
-    const normalized = name.trim().toLowerCase();
-    for (const venue of venues.values()) {
-        if (venue.id !== excludeId && venue.name.trim().toLowerCase() === normalized) {
-            throw new HttpError(409, `A venue named "${name}" already exists`);
-        }
-    }
-}
-
-export function createVenue(input: CreateVenueInput): Venue {
-    assertUniqueVenueName(input.name);
-
-    const now = new Date().toISOString();
-    const venue: Venue = {
-        id: randomUUID(),
-        ...input,
-        createdAt: now,
-        updatedAt: now,
-    };
-    venues.set(venue.id, venue);
-    return venue;
-}
-
-export function listVenues(page: number, limit: number): PaginatedResult<Venue> {
-    return paginate([...venues.values()], page, limit);
-}
-
-export function getVenueById(id: string): Venue {
-    return findVenueOrFail(id);
-}
-
-export function updateVenue(id: string, input: UpdateVenueInput): Venue {
-    const existing = findVenueOrFail(id);
-
-    if (input.name !== undefined && input.name !== existing.name) {
-        assertUniqueVenueName(input.name, id);
+export async function updateVenue(id: string, input: UpdateVenueInput): Promise<Venue> {
+    const existing = await venueRepo.findVenueById(id);
+    if (!existing) {
+        throw new HttpError(404, "Venue not found");
     }
 
-    const updated: Venue = {
-        ...existing,
-        ...input,
-        updatedAt: new Date().toISOString(),
-    };
-    venues.set(id, updated);
+    if (input.name !== undefined && input.name.trim().toLowerCase() !== existing.name.trim().toLowerCase()) {
+        await assertUniqueVenueName(input.name, id);
+    }
+
+    const updated = await venueRepo.updateVenue(id, input);
+    if (!updated) {
+        throw new HttpError(404, "Venue not found");
+    }
     return updated;
 }
 
-export function deleteVenue(id: string): void {
-    findVenueOrFail(id);
-    venues.delete(id);
+export async function deleteVenue(id: string): Promise<void> {
+    const deleted = await venueRepo.deleteVenue(id);
+    if (!deleted) {
+        throw new HttpError(404, "Venue not found");
+    }
 }

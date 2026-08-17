@@ -1,20 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Event, PaginatedResult } from "../domain.ts";
 import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
-import { paginate } from "../utils/http.ts";
+import * as eventRepo from "./event.repository.ts";
 
-/** In-memory store — keyed by id for O(1) lookups. */
-const events = new Map<string, Event>();
-
-/** Private DRY helper to find an event or throw 404 */
-function findEventOrFail(id: string): Event {
-    const event = events.get(id);
-    if (!event) {
-        throw new HttpError(404, "Event not found");
-    }
-    return event;
-}
+/**
+ * Event service — orchestration & domain rules only.
+ * Persistence lives in event.repository.ts; this layer never touches Prisma
+ * directly, so swapping storage (or faking it in tests) is a one-file change.
+ */
 
 /** Asserts that an event's startsAt date is in the future */
 function assertFutureDate(startsAt: string): void {
@@ -23,60 +16,37 @@ function assertFutureDate(startsAt: string): void {
     }
 }
 
-export function createEvent(input: CreateEventInput): Event {
+export async function createEvent(input: CreateEventInput): Promise<Event> {
     assertFutureDate(input.startsAt);
+    return eventRepo.createEvent(input);
+}
 
-    const now = new Date().toISOString();
-    const event: Event = {
-        id: randomUUID(),
-        ...input,
-        createdAt: now,
-        updatedAt: now,
-    };
-    events.set(event.id, event);
+export async function listEvents(query: ListEventsQuery): Promise<PaginatedResult<Event>> {
+    return eventRepo.listEvents(query);
+}
+
+export async function getEventById(id: string): Promise<Event> {
+    const event = await eventRepo.findEventById(id);
+    if (!event) {
+        throw new HttpError(404, "Event not found");
+    }
     return event;
 }
 
-export function listEvents(query: ListEventsQuery): PaginatedResult<Event> {
-    const { page, limit, venue, from, to } = query;
-    let filtered = [...events.values()];
-
-    if (venue !== undefined) {
-        filtered = filtered.filter((e) => e.venue === venue);
-    }
-    if (from !== undefined) {
-        const fromTime = new Date(from).getTime();
-        filtered = filtered.filter((e) => new Date(e.startsAt).getTime() >= fromTime);
-    }
-    if (to !== undefined) {
-        const toTime = new Date(to).getTime();
-        filtered = filtered.filter((e) => new Date(e.startsAt).getTime() <= toTime);
-    }
-
-    return paginate(filtered, page, limit);
-}
-
-export function getEventById(id: string): Event {
-    return findEventOrFail(id);
-}
-
-export function updateEvent(id: string, input: UpdateEventInput): Event {
-    const existing = findEventOrFail(id);
-
+export async function updateEvent(id: string, input: UpdateEventInput): Promise<Event> {
     if (input.startsAt !== undefined) {
         assertFutureDate(input.startsAt);
     }
-
-    const updated: Event = {
-        ...existing,
-        ...input,
-        updatedAt: new Date().toISOString(),
-    };
-    events.set(id, updated);
+    const updated = await eventRepo.updateEvent(id, input);
+    if (!updated) {
+        throw new HttpError(404, "Event not found");
+    }
     return updated;
 }
 
-export function deleteEvent(id: string): void {
-    findEventOrFail(id);
-    events.delete(id);
+export async function deleteEvent(id: string): Promise<void> {
+    const deleted = await eventRepo.deleteEvent(id);
+    if (!deleted) {
+        throw new HttpError(404, "Event not found");
+    }
 }
