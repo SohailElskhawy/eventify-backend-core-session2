@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationQuerySchema } from "../schemas/pagination.schema.ts";
 
 /** Schema for creating a new venue (POST body). */
 export const createVenueSchema = z.strictObject({
@@ -18,10 +19,7 @@ export const updateVenueSchema = createVenueSchema.partial().refine(
 );
 
 /** Schema for list query params. Values arrive as strings from Express. */
-export const listVenuesQuerySchema = z.strictObject({
-    page: z.coerce.number().int().min(1, "page must be an integer >= 1").optional().default(1),
-    limit: z.coerce.number().int().min(1, "limit must be between 1 and 100").max(100, "limit cannot exceed 100").optional().default(20),
-});
+export const listVenuesQuerySchema = paginationQuerySchema;
 
 export type CreateVenueInput = z.infer<typeof createVenueSchema>;
 export type UpdateVenueInput = z.infer<typeof updateVenueSchema>;

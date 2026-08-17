@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationQuerySchema } from "../schemas/pagination.schema.ts";
 
 /** Schema for creating a new event (POST body). */
 export const createEventSchema = z.strictObject({
@@ -18,9 +19,7 @@ export const updateEventSchema = createEventSchema.partial().refine(
 );
 
 /** Schema for list query params. Values arrive as strings from Express. */
-export const listEventsQuerySchema = z.strictObject({
-    page: z.coerce.number().int().min(1, "page must be an integer >= 1").optional().default(1),
-    limit: z.coerce.number().int().min(1, "limit must be between 1 and 100").max(100, "limit cannot exceed 100").optional().default(20),
+export const listEventsQuerySchema = paginationQuerySchema.extend({
     venue: z.string().trim().min(1, "venue cannot be empty").optional(),
     from: z.iso.datetime("from must be an ISO date string").optional(),
     to: z.iso.datetime("to must be an ISO date string").optional(),
