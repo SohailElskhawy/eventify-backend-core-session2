@@ -1,10 +1,9 @@
-import { prisma } from "../db/prisma.ts";
-import { Prisma } from "../generated/prisma/client.ts";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Booking } from "../domain.ts";
 import type { CreateBookingInput } from "./booking.schema.ts";
 import * as bookingRepo from "./booking.repository.ts";
 import type { TxClient } from "./booking.repository.ts";
+import { runSerializableTransaction } from "../db/transaction.ts";
 
 /**
  * Transactional booking creation.
@@ -32,33 +31,8 @@ import type { TxClient } from "./booking.repository.ts";
  *   existing row WAITLISTED  → leave alone (promotion is Session 5's job)
  */
 
-/** Maximum retries on serialization conflicts (P2034 / 40001). */
-const MAX_RETRIES = 10;
-
 /**
- * Checks whether an error is a Postgres/Prisma serialization conflict.
- * Under Serializable isolation, Postgres rejects concurrent read/write overlapping
- * transactions with SQLSTATE 40001. In Prisma 7 with @prisma/adapter-pg, this is surfaced
- * via DriverAdapterError (cause.originalCode '40001' or kind 'TransactionWriteConflict'),
- * or as PrismaClientKnownRequestError with code P2034.
- */
-function isSerializationError(err: unknown): boolean {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
-        return true;
-    }
-    const originalCode = (err as { cause?: { originalCode?: string } })?.cause?.originalCode;
-    const kind = (err as { cause?: { kind?: string } })?.cause?.kind;
-    const msg = (err as { message?: string })?.message ?? "";
-    return (
-        originalCode === "40001" ||
-        kind === "TransactionWriteConflict" ||
-        msg.includes("TransactionWriteConflict") ||
-        msg.includes("could not serialize access")
-    );
-}
-
-/**
- * The core transaction body — runs inside `prisma.$transaction`.
+ * The core transaction body — runs inside `runSerializableTransaction`.
  * Every read and write goes through `tx` in repository methods, NEVER `prisma`.
  */
 async function executeBookingTransaction(
@@ -106,7 +80,7 @@ async function executeBookingTransaction(
             status: "CONFIRMED",
         });
     } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
             throw new HttpError(409, "User already has a booking for this event");
         }
         throw err;
@@ -117,28 +91,9 @@ async function executeBookingTransaction(
  * Public entry point — wraps the transaction body in the retry loop.
  */
 export async function createBooking(userId: string, input: CreateBookingInput): Promise<Booking> {
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        try {
-            return await prisma.$transaction(
-                (tx) => executeBookingTransaction(tx, userId, input.eventId),
-                { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-            );
-        } catch (err) {
-            if (isSerializationError(err)) {
-                lastError = err;
-                await new Promise((resolve) =>
-                    setTimeout(resolve, Math.floor(Math.random() * 30) + 10),
-                );
-                continue;
-            }
-            throw err;
-        }
-    }
-
-    void lastError;
-    throw new HttpError(503, "Could not complete booking due to concurrent conflicts — please retry");
+    return runSerializableTransaction((tx) =>
+        executeBookingTransaction(tx, userId, input.eventId),
+    );
 }
 
 // ── Read & Cancel ───────────────────────────────────────────
