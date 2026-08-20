@@ -199,3 +199,56 @@ node --env-file=.env scripts/verify-auth.ts
 npm run typecheck
 npm run lint
 ```
+
+
+In auth.controller.ts, you see:
+
+    export async function signupHandler(req: Request<unknown, unknown, SignupInput>, res: Response): Promise<void>
+
+  ### 🔍 Why unknown, unknown, SignupInput?
+
+  Express's Request interface in TypeScript accepts 5 generic type parameters in a specific order:
+
+    Request<Params, ResBody, ReqBody, ReqQuery, Locals>
+    //         1        2        3        4       5
+
+   Parameter Index                        | Name                                  | What it types                         | In our handler
+  ----------------------------------------|---------------------------------------|---------------------------------------|----------------------------------------------------------------------
+   1st                                    | Params                                | req.params (e.g., :id)                | unknown (this endpoint has no URL parameters like /signup/:id)
+   2nd                                    | ResBody                               | res.json(...) body                    | unknown (we don't restrict the response shape here)
+   3rd                                    | ReqBody                               | req.body (POST payload)               | SignupInput (strictly types req.body.email, req.body.password, etc.)
+  ──────
+  ### 💡 Why not just write req: Request?
+
+  If we write req: Request, TypeScript defaults req.body to any.
+
+  By specifying the 3rd generic (ReqBody), TypeScript gives us full autocomplete and compile-time type safety on req.body without needing unsafe type assertions like (req.body as SignupInput).
+
+  Because TypeScript doesn't let us skip the first two generics (Params and ResBody) to reach the 3rd one (ReqBody), we pass unknown (or Record<string, never>) as placeholders for the unused
+  first two.
+
+
+    Investigating Optional Field
+  In event.schema.ts:12, organizerId is marked .optional() for two key security and design reasons:
+  ──────
+  ### 1. 🛡️ Security: The User ID Comes From the JWT Token
+
+  Now that authentication is active, when a logged-in ORGANIZER creates an event via POST /v1/events:
+
+  • The backend automatically extracts their user ID from their verified JWT token (req.user.sub).
+  • If organizerId were required in the JSON body, regular users would have to type their own UUID manually, and malicious users could try to spoof someone else's ID.
+
+  By not requiring it in the body, the server guarantees that:
+
+    Event Organizer = Authenticated User in JWT
+  ──────
+  ### 2. 👑 Admin Flexibility: Creating on Behalf of Others
+
+  In event.service.ts:19-25:
+
+    const organizerId = currentUser.role === "ADMIN" && input.organizerId 
+        ? input.organizerId 
+        : currentUser.sub;
+
+  • Normal Organizer: Doesn't pass organizerId → automatically assigned currentUser.sub.
+  • Admin: Can optionally pass an organizerId in the JSON body if they want to create an event on behalf of a specific organizer. If they omit it, it also defaults to their own currentUser.sub.
