@@ -9,7 +9,7 @@ export const createEventSchema = z.strictObject({
     startsAt: z.iso.datetime("startsAt must be an ISO date string"),
     capacity: z.number().int().positive("capacity must be a positive integer").max(100_000, "capacity cannot exceed 100,000"),
     priceCents: z.number().int().nonnegative("priceCents must be a non-negative integer").max(10_000_000, "priceCents cannot exceed 10,000,000 ($100k)"),
-    organizerId: z.string().trim().min(1, "organizerId is required"),
+    organizerId: z.string().trim().min(1).optional(),
 });
 
 /** Schema for partially updating an event (PATCH body). */

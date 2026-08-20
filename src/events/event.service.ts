@@ -2,6 +2,7 @@ import { HttpError } from "../errors/HttpError.ts";
 import type { Event, PaginatedResult } from "../domain.ts";
 import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
 import * as eventRepo from "./event.repository.ts";
+import type { JwtPayload } from "../auth/jwt.ts";
 
 /**
  * Event service — orchestration & domain rules only.
@@ -16,9 +17,13 @@ function assertFutureDate(startsAt: string): void {
     }
 }
 
-export async function createEvent(input: CreateEventInput): Promise<Event> {
+export async function createEvent(input: CreateEventInput, currentUser: JwtPayload): Promise<Event> {
     assertFutureDate(input.startsAt);
-    return eventRepo.createEvent(input);
+    const organizerId = currentUser.role === "ADMIN" && input.organizerId ? input.organizerId : currentUser.sub;
+    return eventRepo.createEvent({
+        ...input,
+        organizerId,
+    });
 }
 
 export async function listEvents(query: ListEventsQuery): Promise<PaginatedResult<Event>> {
@@ -33,10 +38,23 @@ export async function getEventById(id: string): Promise<Event> {
     return event;
 }
 
-export async function updateEvent(id: string, input: UpdateEventInput): Promise<Event> {
+export async function updateEvent(
+    id: string,
+    input: UpdateEventInput,
+    currentUser: JwtPayload,
+): Promise<Event> {
     if (input.startsAt !== undefined) {
         assertFutureDate(input.startsAt);
     }
+    const existing = await eventRepo.findEventById(id);
+    if (!existing) {
+        throw new HttpError(404, "Event not found");
+    }
+
+    if (currentUser.role !== "ADMIN" && existing.organizerId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this event");
+    }
+
     const updated = await eventRepo.updateEvent(id, input);
     if (!updated) {
         throw new HttpError(404, "Event not found");
@@ -44,7 +62,16 @@ export async function updateEvent(id: string, input: UpdateEventInput): Promise<
     return updated;
 }
 
-export async function deleteEvent(id: string): Promise<void> {
+export async function deleteEvent(id: string, currentUser: JwtPayload): Promise<void> {
+    const existing = await eventRepo.findEventById(id);
+    if (!existing) {
+        throw new HttpError(404, "Event not found");
+    }
+
+    if (currentUser.role !== "ADMIN" && existing.organizerId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this event");
+    }
+
     const deleted = await eventRepo.deleteEvent(id);
     if (!deleted) {
         throw new HttpError(404, "Event not found");

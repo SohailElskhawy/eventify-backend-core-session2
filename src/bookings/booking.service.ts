@@ -4,6 +4,7 @@ import type { CreateBookingInput } from "./booking.schema.ts";
 import * as bookingRepo from "./booking.repository.ts";
 import type { TxClient } from "./booking.repository.ts";
 import { runSerializableTransaction } from "../db/transaction.ts";
+import type { JwtPayload } from "../auth/jwt.ts";
 
 /**
  * Transactional booking creation.
@@ -96,17 +97,31 @@ export async function createBooking(userId: string, input: CreateBookingInput): 
     );
 }
 
-// ── Read & Cancel ───────────────────────────────────────────
+// ── Read & Cancel (with Ownership checks) ───────────────────
 
-export async function getBookingById(id: string): Promise<Booking> {
+export async function getBookingById(id: string, currentUser: JwtPayload): Promise<Booking> {
     const booking = await bookingRepo.findBookingById(id);
     if (!booking) {
         throw new HttpError(404, "Booking not found");
     }
+
+    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this booking");
+    }
+
     return booking;
 }
 
-export async function cancelBooking(id: string): Promise<Booking> {
+export async function cancelBooking(id: string, currentUser: JwtPayload): Promise<Booking> {
+    const booking = await bookingRepo.findBookingById(id);
+    if (!booking) {
+        throw new HttpError(404, "Booking not found");
+    }
+
+    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this booking");
+    }
+
     const cancelled = await bookingRepo.softCancelBooking(id);
     if (!cancelled) {
         throw new HttpError(404, "Booking not found");
