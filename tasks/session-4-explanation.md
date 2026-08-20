@@ -9,41 +9,41 @@ This guide explains the architecture, security principles, and line-by-line deta
 ```mermaid
 flowchart TD
     subgraph Client
-        Browser[Client App / Browser]
+        Browser["Client App / Browser"]
     end
 
-    subgraph AuthLayer[Auth & Security Layer]
-        reqAuth[requireAuth Middleware]
-        reqRole[requireRole Middleware]
-        jwtUtil[JWT Verify (Pinned HS256 + Zod)]
-        rotCheck[Rotation & Theft Detection]
+    subgraph AuthLayer["Auth & Security Layer"]
+        reqAuth["requireAuth Middleware"]
+        reqRole["requireRole Middleware"]
+        jwtUtil["JWT Verify (Pinned HS256 + Zod)"]
+        rotCheck["Rotation & Theft Detection"]
     end
 
-    subgraph ServiceLayer[Domain & Service Layer]
-        AuthServ[auth.service.ts]
-        EventServ[event.service.ts (BOLA Checks)]
-        BookServ[booking.service.ts (BOLA Checks)]
+    subgraph ServiceLayer["Domain & Service Layer"]
+        AuthServ["auth.service.ts"]
+        EventServ["event.service.ts (BOLA Checks)"]
+        BookServ["booking.service.ts (BOLA Checks)"]
     end
 
-    subgraph Database[PostgreSQL via Prisma]
-        UserTable[(User: passwordHash)]
-        TokenTable[(RefreshToken: tokenHash, replacedById)]
-        EventTable[(Event: organizerId)]
-        BookTable[(Booking: userId)]
+    subgraph Database["PostgreSQL via Prisma"]
+        UserTable[("User: passwordHash")]
+        TokenTable[("RefreshToken: tokenHash, replacedById")]
+        EventTable[("Event: organizerId")]
+        BookTable[("Booking: userId")]
     end
 
-    Browser -->|Bearer Access JWT| reqAuth
+    Browser -->|"Bearer Access JWT"| reqAuth
     reqAuth --> jwtUtil
-    jwtUtil -->|req.user| reqRole
+    jwtUtil -->|"req.user"| reqRole
     reqRole --> EventServ
     reqRole --> BookServ
 
-    Browser -->|httpOnly Cookie /v1/auth/refresh| AuthServ
+    Browser -->|"httpOnly Cookie /v1/auth/refresh"| AuthServ
     AuthServ --> rotCheck
     rotCheck --> TokenTable
 
-    EventServ -->|Check organizerId === req.user.sub| EventTable
-    BookServ -->|Check userId === req.user.sub| BookTable
+    EventServ -->|"Check organizerId === req.user.sub"| EventTable
+    BookServ -->|"Check userId === req.user.sub"| BookTable
 ```
 
 ---
