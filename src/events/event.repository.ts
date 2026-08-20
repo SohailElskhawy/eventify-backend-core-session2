@@ -34,7 +34,7 @@ export async function createEvent(input: CreateEventInput & { organizerId: strin
         data: {
             title: input.title,
             description: input.description,
-            venue: input.venue,
+            venue: input.venue ?? null,
             startsAt: new Date(input.startsAt),
             capacity: input.capacity,
             priceCents: input.priceCents,
