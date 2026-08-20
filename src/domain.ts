@@ -41,3 +41,23 @@ export interface PaginatedResult<T> {
     page: number;
     limit: number;
 }
+
+export interface AuthTokenPayload {
+    sub: string;
+    role: Role;
+}
+
+export interface AuthSession {
+    accessToken: string;
+    user: User;
+}
+
+export interface RefreshToken {
+    id: string;
+    tokenHash: string;
+    userId: string;
+    expiresAt: string;
+    revokedAt: string | null;
+    replacedById: string | null;
+    createdAt: string;
+}
