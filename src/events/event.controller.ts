@@ -5,7 +5,7 @@ import { getRouteParam, getValidatedQuery } from "../utils/http.ts";
 
 /** POST /v1/events */
 export async function create(req: Request, res: Response): Promise<void> {
-    const event = await eventService.createEvent(req.body as CreateEventInput);
+    const event = await eventService.createEvent(req.body as CreateEventInput, req.user!);
     res.status(201).json(event);
 }
 
@@ -24,12 +24,16 @@ export async function getById(req: Request, res: Response): Promise<void> {
 
 /** PATCH /v1/events/:id */
 export async function update(req: Request, res: Response): Promise<void> {
-    const event = await eventService.updateEvent(getRouteParam(req), req.body as UpdateEventInput);
+    const event = await eventService.updateEvent(
+        getRouteParam(req),
+        req.body as UpdateEventInput,
+        req.user!,
+    );
     res.json(event);
 }
 
 /** DELETE /v1/events/:id */
 export async function remove(req: Request, res: Response): Promise<void> {
-    await eventService.deleteEvent(getRouteParam(req));
+    await eventService.deleteEvent(getRouteParam(req), req.user!);
     res.status(204).end();
 }

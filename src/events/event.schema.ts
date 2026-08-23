@@ -5,11 +5,11 @@ import { paginationQuerySchema } from "../schemas/pagination.schema.ts";
 export const createEventSchema = z.strictObject({
     title: z.string().trim().min(3, "title must be at least 3 characters").max(200, "title cannot exceed 200 characters"),
     description: z.string().trim().min(10, "description must be at least 10 characters").max(2000, "description cannot exceed 2000 characters"),
-    venue: z.string().trim().min(2, "venue must be at least 2 characters").max(200, "venue cannot exceed 200 characters").nullable(),
+    venue: z.string().trim().min(2, "venue must be at least 2 characters").max(200, "venue cannot exceed 200 characters").nullable().optional(),
     startsAt: z.iso.datetime("startsAt must be an ISO date string"),
     capacity: z.number().int().positive("capacity must be a positive integer").max(100_000, "capacity cannot exceed 100,000"),
     priceCents: z.number().int().nonnegative("priceCents must be a non-negative integer").max(10_000_000, "priceCents cannot exceed 10,000,000 ($100k)"),
-    organizerId: z.string().trim().min(1, "organizerId is required"),
+    organizerId: z.string().trim().min(1).optional(),
 });
 
 /** Schema for partially updating an event (PATCH body). */

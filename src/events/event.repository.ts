@@ -29,12 +29,12 @@ function toDomain(row: EventRow): DomainEvent {
     };
 }
 
-export async function createEvent(input: CreateEventInput): Promise<DomainEvent> {
+export async function createEvent(input: CreateEventInput & { organizerId: string }): Promise<DomainEvent> {
     const row = await prisma.event.create({
         data: {
             title: input.title,
             description: input.description,
-            venue: input.venue,
+            venue: input.venue ?? null,
             startsAt: new Date(input.startsAt),
             capacity: input.capacity,
             priceCents: input.priceCents,

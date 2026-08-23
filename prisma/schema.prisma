@@ -20,12 +20,29 @@ enum BookingStatus {
 }
 
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  name      String
-  role      Role      @default(ATTENDEE)
-  createdAt DateTime  @default(now())
-  bookings  Booking[]
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String
+  passwordHash  String
+  role          Role           @default(ATTENDEE)
+  createdAt     DateTime       @default(now())
+  bookings      Booking[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id           String        @id @default(uuid())
+  tokenHash    String        @unique
+  userId       String
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?       @unique
+  createdAt    DateTime      @default(now())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  replacedFrom RefreshToken? @relation("TokenRotation")
+
+  @@index([userId])
 }
 
 model Event {

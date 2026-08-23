@@ -1,4 +1,5 @@
 import "dotenv/config";
+import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, type Role } from "../src/generated/prisma/client.ts";
 
@@ -6,7 +7,7 @@ import { PrismaClient, type Role } from "../src/generated/prisma/client.ts";
  * Seed script — idempotent (all upserts, safe to run multiple times).
  *
  * Creates:
- *   - 3 core users: ORGANIZER, ADMIN, ATTENDEE
+ *   - 4 core users: ORGANIZER 1, ORGANIZER 2, ADMIN, ATTENDEE (all password: password123)
  *   - 5 events (one with capacity 5 — the target for parallel-bookings.ts)
  *   - a few sample bookings
  *   - 20 parallel-test users (deterministic UUIDs so re-seeding doesn't
@@ -19,9 +20,6 @@ const adapter = new PrismaPg({ connectionString: process.env["DATABASE_URL"] });
 const prisma = new PrismaClient({ adapter });
 
 // ── Fixed UUIDs for the parallel script target ──────────────
-// Using deterministic ids so parallel-users.json never needs updating
-// after a re-seed. The parallel users use a distinct UUID prefix (a...)
-// to avoid colliding with the core users/events which use 0... prefix.
 const PARALLEL_EVENT_ID = "a0000000-0000-4000-8000-000000000005";
 const parallelUserIds: string[] = [];
 for (let i = 1; i <= 20; i++) {
@@ -29,41 +27,63 @@ for (let i = 1; i <= 20; i++) {
 }
 
 async function main(): Promise<void> {
+    const passwordHash = await bcrypt.hash("password123", 10);
+
     // ── Core users ──────────────────────────────────────────
-    const organizer = await prisma.user.upsert({
+    const organizer1 = await prisma.user.upsert({
         where: { email: "organizer@eventify.com" },
-        update: {},
+        update: { passwordHash },
         create: {
             id: "00000000-0000-4000-8000-000000000001",
             email: "organizer@eventify.com",
             name: "Alice Organizer",
+            passwordHash,
+            role: "ORGANIZER" as Role,
+        },
+    });
+
+    const organizer2 = await prisma.user.upsert({
+        where: { email: "organizer2@eventify.com" },
+        update: { passwordHash },
+        create: {
+            id: "00000000-0000-4000-8000-000000000004",
+            email: "organizer2@eventify.com",
+            name: "Dave Organizer 2",
+            passwordHash,
             role: "ORGANIZER" as Role,
         },
     });
 
     const admin = await prisma.user.upsert({
         where: { email: "admin@eventify.com" },
-        update: {},
+        update: { passwordHash },
         create: {
             id: "00000000-0000-4000-8000-000000000002",
             email: "admin@eventify.com",
             name: "Bob Admin",
+            passwordHash,
             role: "ADMIN" as Role,
         },
     });
 
     const attendee = await prisma.user.upsert({
         where: { email: "attendee@eventify.com" },
-        update: {},
+        update: { passwordHash },
         create: {
             id: "00000000-0000-4000-8000-000000000003",
             email: "attendee@eventify.com",
             name: "Carol Attendee",
+            passwordHash,
             role: "ATTENDEE" as Role,
         },
     });
 
-    console.log("Core users:", { organizer: organizer.id, admin: admin.id, attendee: attendee.id });
+    console.log("Core users:", {
+        organizer1: organizer1.id,
+        organizer2: organizer2.id,
+        admin: admin.id,
+        attendee: attendee.id,
+    });
 
     // ── 5 events (one with capacity 5) ──────────────────────
     const futureDate = (days: number): Date => {
@@ -81,7 +101,7 @@ async function main(): Promise<void> {
             startsAt: futureDate(30),
             capacity: 5,
             priceCents: 2500,
-            organizerId: organizer.id,
+            organizerId: organizer1.id,
         },
         {
             id: "00000000-0000-4000-8000-000000000010",
@@ -91,7 +111,7 @@ async function main(): Promise<void> {
             startsAt: futureDate(60),
             capacity: 500,
             priceCents: 15000,
-            organizerId: organizer.id,
+            organizerId: organizer1.id,
         },
         {
             id: "00000000-0000-4000-8000-000000000011",
@@ -101,7 +121,7 @@ async function main(): Promise<void> {
             startsAt: futureDate(14),
             capacity: 30,
             priceCents: 5000,
-            organizerId: organizer.id,
+            organizerId: organizer1.id,
         },
         {
             id: "00000000-0000-4000-8000-000000000012",
@@ -111,7 +131,7 @@ async function main(): Promise<void> {
             startsAt: futureDate(7),
             capacity: 100,
             priceCents: 0,
-            organizerId: organizer.id,
+            organizerId: organizer1.id,
         },
         {
             id: "00000000-0000-4000-8000-000000000013",
@@ -121,7 +141,7 @@ async function main(): Promise<void> {
             startsAt: futureDate(45),
             capacity: 80,
             priceCents: 7500,
-            organizerId: organizer.id,
+            organizerId: organizer2.id, // Owned by Organizer 2 for BOLA tests!
         },
     ];
 
@@ -135,6 +155,7 @@ async function main(): Promise<void> {
                 startsAt: ev.startsAt,
                 capacity: ev.capacity,
                 priceCents: ev.priceCents,
+                organizerId: ev.organizerId,
             },
             create: ev,
         });
@@ -142,7 +163,6 @@ async function main(): Promise<void> {
     console.log(`Seeded ${events.length} events (capacity-5 event: ${PARALLEL_EVENT_ID})`);
 
     // ── Sample bookings ─────────────────────────────────────
-    // Clean up any previous bookings for the parallel test event to ensure clean test runs
     await prisma.booking.deleteMany({
         where: { eventId: PARALLEL_EVENT_ID },
     });
@@ -165,27 +185,25 @@ async function main(): Promise<void> {
         const email = `parallel-user-${i + 1}@eventify.com`;
         await prisma.user.upsert({
             where: { email },
-            update: {},
+            update: { passwordHash },
             create: {
                 id,
                 email,
                 name: `Parallel User ${i + 1}`,
+                passwordHash,
                 role: "ATTENDEE" as Role,
             },
         });
     }
     console.log(`Seeded 20 parallel-test users`);
 
-    // ── Print what the parallel script needs ────────────────
+    // ── Print summary ───────────────────────────────────────
     console.log("\n========================================");
-    console.log("Copy these into scripts/fixtures/parallel-users.json:");
-    console.log("========================================");
-    console.log(`Event ID (capacity 5): ${PARALLEL_EVENT_ID}`);
-    console.log(`Capacity: 5`);
-    console.log(`\n20 user ids:`);
-    for (const id of parallelUserIds) {
-        console.log(`  ${id}`);
-    }
+    console.log("Core User Accounts (password: password123):");
+    console.log("Organizer 1:", organizer1.email, `(${organizer1.id})`);
+    console.log("Organizer 2:", organizer2.email, `(${organizer2.id})`);
+    console.log("Admin:      ", admin.email, `(${admin.id})`);
+    console.log("Attendee:   ", attendee.email, `(${attendee.id})`);
     console.log("========================================\n");
 }
 
