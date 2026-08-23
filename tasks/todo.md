@@ -1,56 +1,68 @@
-# Session 4 — Locking Eventify Down
+# Session 5 — Caching, Queues & Background Jobs
 
 Plan-first rule: this file is the PR's first commit. Check items off as you go.
 
-## Phase 1 — Config, Dependencies & Environment (Task 1 & 3 Prereqs)
-- [x] Install auth dependencies: `jsonwebtoken`, `cookie-parser`, `bcryptjs` and type definitions
-- [x] Update `src/config.ts` with validated `JWT_ACCESS_SECRET`, `WEB_ORIGIN` via `envSchema`
-- [x] Update `.env.example` and `.env` with `JWT_ACCESS_SECRET` and `WEB_ORIGIN`
-- [x] Configure `cookie-parser` in `src/app.ts`
+## Phase 1 — Infrastructure & Dependencies (Task 2 & 3 Prereqs)
+- [ ] Install Redis client (`redis`) and BullMQ (`bullmq`) dependencies
+- [ ] Update `docker-compose.yml` to include `redis:8` service on port `6379`
+- [ ] Update `src/config.ts` with validated `REDIS_URL` in `envSchema`
+- [ ] Update `.env.example` and `.env` with `REDIS_URL=redis://localhost:6379`
+- [ ] Implement `src/infra/redis.ts` (Node-redis client for cache and rate limiter)
+- [ ] Implement `src/infra/queue-backend.ts` (Dedicated connection wrapped for BullMQ v6)
 
-## Phase 2 — Database Schema & Migrations (Task 3 Prereq)
-- [x] Add `passwordHash String` to `User` model in `prisma/schema.prisma`
-- [x] Add `RefreshToken` model to `prisma/schema.prisma` with `tokenHash`, `expiresAt`, `revokedAt`, `replacedById`, and `user` relation
-- [x] Add `refreshTokens RefreshToken[]` back-relation on `User`
-- [x] Run Prisma migration & client generation (`npx prisma generate`)
-- [x] Update `src/domain.ts` types for User, AuthTokenPayload, AuthSession, and RefreshToken
+## Phase 2 — Redis Rate Limiting Rollout (Task 3)
+- [ ] Implement fixed-window rate limiter middleware in `src/middleware/rateLimiter.ts`:
+  - [ ] Key format: `rl:{identifier}:{path}:{window}`
+  - [ ] Support custom key generators (IP address vs. Authenticated User ID)
+  - [ ] Return standard 429 Too Many Requests with `Retry-After` header when limit exceeded
+- [ ] Apply rate limiter to `POST /v1/auth/login` (strict, per-IP limit: e.g., 5 attempts / 60s)
+- [ ] Apply rate limiter to `POST /v1/bookings` (per-user limit: key by `req.user.sub`, e.g., 10 bookings / 60s)
+- [ ] Create verification script `scripts/verify-rate-limit.ts` to prove:
+  - [ ] Burst beyond threshold returns 429 status code
+  - [ ] Requests recover after window expiry
 
-## Phase 3 — Auth Infrastructure & Middlewares (Task 1 & 3)
-- [x] Implement password hashing helper (`hashPassword`, `verifyPassword`) with bcrypt
-- [x] Implement JWT helper with pinned `HS256`, 15-minute expiration, and Zod payload schema validation
-- [x] Implement opaque token generator (`randomBytes(32)`) and SHA-256 token hashing helper (`hashToken`)
-- [x] Implement `requireAuth` middleware (extracts Bearer token, validates JWT, populates `req.user`)
-- [x] Implement `requireRole(...roles: Role[])` middleware (checks `req.user.role`, returns 403 on mismatch)
+## Phase 3 — Cache-Aside & Cache Metrics (Task 2)
+- [ ] Implement cache metrics collector with `{ hits, misses, ratio }` tracking
+- [ ] Add periodic logging (structured JSON via `console.log` every 60s or 100 lookups)
+- [ ] Update `src/events/event.service.ts` with cache-aside read path:
+  - [ ] `getEventById`: Read `event:{id}` from Redis; on miss fetch from DB and set with 60s TTL + jitter
+  - [ ] `listEvents`: Read `events:list:{v}:{page}` from Redis; on miss fetch from DB and cache
+- [ ] Implement cache invalidation (delete-on-write & list versioning):
+  - [ ] `updateEvent`: `DEL event:{id}` and `INCR events:list:v`
+  - [ ] `deleteEvent`: `DEL event:{id}` and `INCR events:list:v`
+  - [ ] `createEvent`: `INCR events:list:v`
 
-## Phase 4 — Auth Endpoints & Token Rotation (Task 3)
-- [x] Implement `RefreshTokenRepository` and `AuthService`:
-  - [x] `signup(data)`: hashes password, creates user, returns sanitized user DTO (no `passwordHash`)
-  - [x] `login(email, password)`: generic 401 on bad credentials, generates access JWT + opaque refresh token, stores SHA-256 hash in DB, sets `httpOnly` cookie
-  - [x] `refresh(rawRefreshToken)`: finds unrevoked, unexpired token by SHA-256 hash; atomically sets `revokedAt` and `replacedById`, creates new token, issues new access token + cookie; returns generic 401 on reuse/expiry/invalid
-  - [x] `logout(rawRefreshToken)`: revokes token in DB, clears cookie
-- [x] Implement `auth.controller.ts` and `auth.routes.ts` mounted at `/v1/auth`
-- [x] Mount `/v1/auth` routes in `src/app.ts`
+## Phase 4 — Background Jobs & Workers (Option A: Waitlist Promotion) (Task 1)
+- [ ] Update booking transaction in `src/bookings/booking.service.ts`:
+  - [ ] When event is full (`confirmedCount >= event.capacity`), create booking with status `WAITLISTED` instead of throwing 409
+  - [ ] If existing booking was `CANCELLED` and event is full, update status to `WAITLISTED`
+- [ ] Implement queues in `src/jobs/`:
+  - [ ] `src/jobs/email.queue.ts` (`booking-email` queue, job `confirmation`, payload `{ bookingId }`)
+  - [ ] `src/jobs/waitlist.queue.ts` (`waitlist-promote` queue, job `promote`, payload `{ eventId }`)
+- [ ] Update `cancelBooking` in `src/bookings/booking.service.ts`:
+  - [ ] When a `CONFIRMED` booking is cancelled, enqueue a `waitlist-promote` job with `{ eventId }`
+- [ ] Implement worker in `src/worker.ts` (independent process):
+  - [ ] Worker for `waitlist-promote`:
+    - [ ] Finds oldest `WAITLISTED` booking for the event (ordered by `createdAt ASC`)
+    - [ ] In a serializable transaction, re-checks capacity and promotes booking to `CONFIRMED`
+    - [ ] Enqueues confirmation email job (`booking-email`)
+  - [ ] Worker for `booking-email`:
+    - [ ] Simulates sending confirmation email (log confirmation payload)
+- [ ] Create verification script `scripts/verify-waitlist.ts` to prove:
+  - [ ] Booking a full event creates a `WAITLISTED` row
+  - [ ] Cancelling a confirmed booking triggers worker promotion of the oldest waitlisted booking
+  - [ ] Re-running worker job does not double-promote
 
-## Phase 5 — Route Protection & Ownership Checks (Tasks 1 & 2 - BOLA)
-- [x] Protect `POST /v1/events`: `requireAuth` + `requireRole("ORGANIZER", "ADMIN")`, set `organizerId` from token `sub`
-- [x] Protect `PATCH /v1/events/:id` & `DELETE /v1/events/:id`: `requireAuth` + ownership check (`event.organizerId === req.user.id`, ADMIN bypasses)
-- [x] Protect `POST /v1/bookings`: `requireAuth` (uses `req.user.id` as `userId`)
-- [x] Protect `DELETE /v1/bookings/:id`: `requireAuth` + ownership check (`booking.userId === req.user.id`, ADMIN bypasses)
-- [x] Keep `GET /v1/events`, `GET /v1/events/:id`, and `GET /health` public
-
-## Phase 6 — Seed Update & Proof Script (Task 2 Acceptance)
-- [x] Update `prisma/seed.ts` with two distinct `ORGANIZER` users, one `ADMIN`, and `ATTENDEE` users with hashed passwords
-- [x] Update deterministic seed with second organizer for BOLA test
-- [x] Create verification script `scripts/verify-auth.ts` to prove:
-  - [x] Unauthenticated requests to protected endpoints return 401
-  - [x] `ATTENDEE` calling `POST /v1/events` returns 403
-  - [x] `ORGANIZER 1` cannot edit/delete `ORGANIZER 2`'s event (403 BOLA check)
-  - [x] `ORGANIZER 1` can edit own event (200 OK)
-  - [x] `ADMIN` can edit any event (200 OK)
-  - [x] User cannot cancel another user's booking (403 BOLA check)
-  - [x] Refresh token rotation works, and token reuse yields 401
-
-## Phase 7 — AI Security Audit, Quality Checks & Submission (Task 4 & Submission)
-- [x] Run OWASP API Security Top 10 prompt against endpoints and triage at least 3 findings
-- [x] Document findings (fixed / false-positive / accepted-risk) and exit ticket in PR description
-- [x] Run `npm run typecheck` and `npm run lint` to verify zero errors
+## Phase 5 — Deploy Prep for Session 6 & Final Verification (Task 4 & Submission)
+- [ ] Provision cloud instances:
+  - [ ] Render account
+  - [ ] Neon Postgres database instance
+  - [ ] Upstash Redis instance
+  - [ ] Store connection strings securely in private `.env`
+- [ ] Run verification gates:
+  - [ ] `npm run typecheck` passes with zero errors
+  - [ ] `npm run lint` passes
+- [ ] Prepare PR description:
+  - [ ] AI caching-strategy interrogation notes
+  - [ ] Exit ticket answer (why `updateEvent` deletes cache key instead of SET)
+  - [ ] Cache hit/miss ratio logs quote
