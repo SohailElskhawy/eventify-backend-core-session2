@@ -91,3 +91,14 @@ export async function updateBookingStatusTx(
     });
     return toDomain(row);
 }
+
+export async function findOldestWaitlistedBookingTx(
+    tx: TxClient,
+    eventId: string,
+): Promise<DomainBooking | null> {
+    const row = await tx.booking.findFirst({
+        where: { eventId, status: "WAITLISTED" },
+        orderBy: { createdAt: "asc" },
+    });
+    return row ? toDomain(row) : null;
+}

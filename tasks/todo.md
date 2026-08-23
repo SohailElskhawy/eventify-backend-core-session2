@@ -33,25 +33,25 @@ Plan-first rule: this file is the PR's first commit. Check items off as you go.
   - [x] `createEvent`: `INCR events:list:v`
 
 ## Phase 4 — Background Jobs & Workers (Option A: Waitlist Promotion) (Task 1)
-- [ ] Update booking transaction in `src/bookings/booking.service.ts`:
-  - [ ] When event is full (`confirmedCount >= event.capacity`), create booking with status `WAITLISTED` instead of throwing 409
-  - [ ] If existing booking was `CANCELLED` and event is full, update status to `WAITLISTED`
-- [ ] Implement queues in `src/jobs/`:
-  - [ ] `src/jobs/email.queue.ts` (`booking-email` queue, job `confirmation`, payload `{ bookingId }`)
-  - [ ] `src/jobs/waitlist.queue.ts` (`waitlist-promote` queue, job `promote`, payload `{ eventId }`)
-- [ ] Update `cancelBooking` in `src/bookings/booking.service.ts`:
-  - [ ] When a `CONFIRMED` booking is cancelled, enqueue a `waitlist-promote` job with `{ eventId }`
-- [ ] Implement worker in `src/worker.ts` (independent process):
-  - [ ] Worker for `waitlist-promote`:
-    - [ ] Finds oldest `WAITLISTED` booking for the event (ordered by `createdAt ASC`)
-    - [ ] In a serializable transaction, re-checks capacity and promotes booking to `CONFIRMED`
-    - [ ] Enqueues confirmation email job (`booking-email`)
-  - [ ] Worker for `booking-email`:
-    - [ ] Simulates sending confirmation email (log confirmation payload)
-- [ ] Create verification script `scripts/verify-waitlist.ts` to prove:
-  - [ ] Booking a full event creates a `WAITLISTED` row
-  - [ ] Cancelling a confirmed booking triggers worker promotion of the oldest waitlisted booking
-  - [ ] Re-running worker job does not double-promote
+- [x] Update booking transaction in `src/bookings/booking.service.ts`:
+  - [x] When event is full (`confirmedCount >= event.capacity`), create booking with status `WAITLISTED` instead of throwing 409
+  - [x] If existing booking was `CANCELLED` and event is full, update status to `WAITLISTED`
+- [x] Implement queues in `src/jobs/`:
+  - [x] `src/jobs/email.queue.ts` (`booking-email` queue, job `confirmation`, payload `{ bookingId }`)
+  - [x] `src/jobs/waitlist.queue.ts` (`waitlist-promote` queue, job `promote`, payload `{ eventId }`)
+- [x] Update `cancelBooking` in `src/bookings/booking.service.ts`:
+  - [x] When a `CONFIRMED` booking is cancelled, enqueue a `waitlist-promote` job with `{ eventId }`
+- [x] Implement worker in `src/worker.ts` (independent process):
+  - [x] Worker for `waitlist-promote`:
+    - [x] Finds oldest `WAITLISTED` booking for the event (ordered by `createdAt ASC`)
+    - [x] In a serializable transaction, re-checks capacity and promotes booking to `CONFIRMED`
+    - [x] Enqueues confirmation email job (`booking-email`)
+  - [x] Worker for `booking-email`:
+    - [x] Simulates sending confirmation email (log confirmation payload)
+- [x] Create verification script `scripts/verify-waitlist.ts` to prove:
+  - [x] Booking a full event creates a `WAITLISTED` row
+  - [x] Cancelling a confirmed booking triggers worker promotion of the oldest waitlisted booking
+  - [x] Re-running worker job does not double-promote
 
 ## Phase 5 — Deploy Prep for Session 6 & Final Verification (Task 4 & Submission)
 - [ ] Provision cloud instances:

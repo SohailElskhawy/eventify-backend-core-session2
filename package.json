@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "node --watch --env-file=.env src/server.ts",
+    "worker": "node --watch --env-file=.env src/worker.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "echo \"No tests yet - Vitest arrives in Session 6\" && exit 0"
