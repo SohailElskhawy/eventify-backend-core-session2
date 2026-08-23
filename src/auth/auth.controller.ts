@@ -1,26 +1,27 @@
-import type { Request, Response } from "express";
+import type { Request, Response, CookieOptions } from "express";
 import { config } from "../config.ts";
 import * as authService from "./auth.service.ts";
 import type { SignupInput, LoginInput } from "./auth.schema.ts";
 
 const REFRESH_COOKIE_NAME = "refreshToken";
 
-function getRefreshCookieOptions() {
+const BASE_REFRESH_COOKIE_OPTIONS: CookieOptions = {
+    httpOnly: true,
+    secure: config.nodeEnv === "production",
+    sameSite: "strict",
+    path: "/v1/auth/refresh",
+};
+
+function getRefreshCookieOptions(): CookieOptions {
     return {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "strict" as const,
-        path: "/v1/auth/refresh",
+        ...BASE_REFRESH_COOKIE_OPTIONS,
         maxAge: 7 * 24 * 60 * 60 * 1000,
     };
 }
 
-function getClearRefreshCookieOptions() {
+function getClearRefreshCookieOptions(): CookieOptions {
     return {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "strict" as const,
-        path: "/v1/auth/refresh",
+        ...BASE_REFRESH_COOKIE_OPTIONS,
     };
 }
 

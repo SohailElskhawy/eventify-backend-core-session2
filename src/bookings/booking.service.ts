@@ -5,31 +5,16 @@ import * as bookingRepo from "./booking.repository.ts";
 import type { TxClient } from "./booking.repository.ts";
 import { runSerializableTransaction } from "../db/transaction.ts";
 import type { JwtPayload } from "../auth/jwt.ts";
+import { waitlistQueue } from "../jobs/waitlist.queue.ts";
 
 /**
- * Transactional booking creation.
+ * Transactional booking creation with Waitlist support.
  *
- * THE RACE THIS FIXES (Session 3 exit-ticket answer):
- * --------------------------------**********************
- * A naive "count confirmed, then insert" is a check-then-act sequence.
- * Under concurrency, two requests can both read "4 confirmed, capacity 5"
- * before either inserts — both succeed → 6 confirmed → oversold.
- *
- * THE FIX:
- *   The entire check-then-act runs inside a single `Serializable` transaction.
- *   Postgres's Serializable Snapshot Isolation (SSI) detects that the two
- *   transactions' read/write sets conflict, aborts the second commit with
- *   `P2034`, and the retry loop re-reads the now-updated count under the new
- *   state. What makes overselling *impossible* is that the capacity read and
- *   the insert are one indivisible serializable unit — the database itself
- *   refuses the inconsistent state, and we retry until it succeeds or we
- *   hit the retry bound.
- *
- * RULES (from the homework rebooking table):
- *   existing row none        → create CONFIRMED
- *   existing row CANCELLED   → flip back to CONFIRMED (same tx, same capacity check)
+ * RULES:
+ *   existing row none        → create CONFIRMED (if seats available) or WAITLISTED (if full)
+ *   existing row CANCELLED   → flip to CONFIRMED (if seats available) or WAITLISTED (if full)
  *   existing row CONFIRMED   → duplicate — let P2002 fire → map to 409
- *   existing row WAITLISTED  → leave alone (promotion is Session 5's job)
+ *   existing row WAITLISTED  → return existing row
  */
 
 /**
@@ -58,10 +43,8 @@ async function executeBookingTransaction(
                 throw new HttpError(409, "User already has a booking for this event");
 
             case "CANCELLED": {
-                if (isFull) {
-                    throw new HttpError(409, "Event is at full capacity");
-                }
-                return bookingRepo.updateBookingStatusTx(tx, existing.id, "CONFIRMED");
+                const targetStatus = isFull ? "WAITLISTED" : "CONFIRMED";
+                return bookingRepo.updateBookingStatusTx(tx, existing.id, targetStatus);
             }
 
             case "WAITLISTED":
@@ -69,16 +52,14 @@ async function executeBookingTransaction(
         }
     }
 
-    // 3. No existing row — create a new booking.
-    if (isFull) {
-        throw new HttpError(409, "Event is at full capacity");
-    }
+    // 3. No existing row — create a new booking (CONFIRMED if seats available, WAITLISTED if full).
+    const initialStatus = isFull ? "WAITLISTED" : "CONFIRMED";
 
     try {
         return await bookingRepo.createBookingTx(tx, {
             userId,
             eventId,
-            status: "CONFIRMED",
+            status: initialStatus,
         });
     } catch (err) {
         if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
@@ -97,7 +78,14 @@ export async function createBooking(userId: string, input: CreateBookingInput): 
     );
 }
 
-// ── Read & Cancel (with Ownership checks) ───────────────────
+// ── Read & Cancel (with Ownership checks & Waitlist Promotion) ───────────────────
+
+/** Asserts that the authenticated user owns the booking or has ADMIN role (BOLA prevention) */
+function assertBookingOwnership(booking: Booking, currentUser: JwtPayload): void {
+    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this booking");
+    }
+}
 
 export async function getBookingById(id: string, currentUser: JwtPayload): Promise<Booking> {
     const booking = await bookingRepo.findBookingById(id);
@@ -105,10 +93,7 @@ export async function getBookingById(id: string, currentUser: JwtPayload): Promi
         throw new HttpError(404, "Booking not found");
     }
 
-    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
-        throw new HttpError(403, "Forbidden: You do not own this booking");
-    }
-
+    assertBookingOwnership(booking, currentUser);
     return booking;
 }
 
@@ -118,13 +103,22 @@ export async function cancelBooking(id: string, currentUser: JwtPayload): Promis
         throw new HttpError(404, "Booking not found");
     }
 
-    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
-        throw new HttpError(403, "Forbidden: You do not own this booking");
-    }
+    assertBookingOwnership(booking, currentUser);
 
+    const wasConfirmed = booking.status === "CONFIRMED";
     const cancelled = await bookingRepo.softCancelBooking(id);
     if (!cancelled) {
         throw new HttpError(404, "Booking not found");
     }
+
+    // When a CONFIRMED booking is cancelled, enqueue a waitlist promotion job
+    if (wasConfirmed) {
+        try {
+            await waitlistQueue.add("promote", { eventId: booking.eventId });
+        } catch (err) {
+            console.error(`Failed to enqueue waitlist-promote job for event ${booking.eventId}:`, err);
+        }
+    }
+
     return cancelled;
 }
