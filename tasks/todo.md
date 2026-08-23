@@ -59,10 +59,10 @@ Plan-first rule: this file is the PR's first commit. Check items off as you go.
   - [ ] Neon Postgres database instance
   - [ ] Upstash Redis instance
   - [ ] Store connection strings securely in private `.env`
-- [ ] Run verification gates:
-  - [ ] `npm run typecheck` passes with zero errors
-  - [ ] `npm run lint` passes
-- [ ] Prepare PR description:
-  - [ ] AI caching-strategy interrogation notes
-  - [ ] Exit ticket answer (why `updateEvent` deletes cache key instead of SET)
-  - [ ] Cache hit/miss ratio logs quote
+- [x] Run verification gates:
+  - [x] `npm run typecheck` passes with zero errors
+  - [x] `npm run lint` passes
+- [x] Prepare PR description:
+  - [x] AI caching-strategy interrogation notes
+  - [x] Exit ticket answer (why `updateEvent` deletes cache key instead of SET)
+  - [x] Cache hit/miss ratio logs quote
