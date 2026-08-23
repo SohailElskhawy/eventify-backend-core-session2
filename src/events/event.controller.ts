@@ -1,39 +1,41 @@
 import type { Request, Response } from "express";
 import * as eventService from "./event.service.ts";
 import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
-
-function getId(req: Request): string {
-    const { id } = req.params;
-    return typeof id === "string" ? id : (id?.[0] ?? "");
-}
+import { getRouteParam, getValidatedQuery, getAuthenticatedUser } from "../utils/http.ts";
 
 /** POST /v1/events */
-export function create(req: Request, res: Response): void {
-    const event = eventService.createEvent(req.body as CreateEventInput);
+export async function create(req: Request<unknown, unknown, CreateEventInput>, res: Response): Promise<void> {
+    const user = getAuthenticatedUser(req);
+    const event = await eventService.createEvent(req.body, user);
     res.status(201).json(event);
 }
 
 /** GET /v1/events */
-export function list(_req: Request, res: Response): void {
-    const { page, limit } = res.locals.query as ListEventsQuery;
-    const paginated = eventService.listEvents(page, limit);
+export async function list(_req: Request, res: Response): Promise<void> {
+    const query = getValidatedQuery<ListEventsQuery>(res);
+    const paginated = await eventService.listEvents(query);
     res.json(paginated);
 }
 
 /** GET /v1/events/:id */
-export function getById(req: Request, res: Response): void {
-    const event = eventService.getEventById(getId(req));
+export async function getById(req: Request<{ id: string }>, res: Response): Promise<void> {
+    const event = await eventService.getEventById(getRouteParam(req));
     res.json(event);
 }
 
 /** PATCH /v1/events/:id */
-export function update(req: Request, res: Response): void {
-    const event = eventService.updateEvent(getId(req), req.body as UpdateEventInput);
+export async function update(
+    req: Request<{ id: string }, unknown, UpdateEventInput>,
+    res: Response,
+): Promise<void> {
+    const user = getAuthenticatedUser(req);
+    const event = await eventService.updateEvent(getRouteParam(req), req.body, user);
     res.json(event);
 }
 
 /** DELETE /v1/events/:id */
-export function remove(req: Request, res: Response): void {
-    eventService.deleteEvent(getId(req));
+export async function remove(req: Request<{ id: string }>, res: Response): Promise<void> {
+    const user = getAuthenticatedUser(req);
+    await eventService.deleteEvent(getRouteParam(req), user);
     res.status(204).end();
 }

@@ -19,16 +19,6 @@ export interface Event {
     updatedAt: string;
 }
 
-export interface Venue {
-    id: string;
-    name: string;
-    address: string;
-    capacity: number;
-    contactEmail: string;
-    createdAt: string;
-    updatedAt: string;
-}
-
 export interface User {
     id: string;
     email: string;
@@ -50,4 +40,24 @@ export interface PaginatedResult<T> {
     total: number;
     page: number;
     limit: number;
+}
+
+export interface AuthTokenPayload {
+    sub: string;
+    role: Role;
+}
+
+export interface AuthSession {
+    accessToken: string;
+    user: User;
+}
+
+export interface RefreshToken {
+    id: string;
+    tokenHash: string;
+    userId: string;
+    expiresAt: string;
+    revokedAt: string | null;
+    replacedById: string | null;
+    createdAt: string;
 }

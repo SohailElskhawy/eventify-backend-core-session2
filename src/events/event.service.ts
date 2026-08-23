@@ -1,19 +1,20 @@
-import { randomUUID } from "node:crypto";
 import { HttpError } from "../errors/HttpError.ts";
 import type { Event, PaginatedResult } from "../domain.ts";
-import type { CreateEventInput, UpdateEventInput } from "./event.schema.ts";
+import type { CreateEventInput, UpdateEventInput, ListEventsQuery } from "./event.schema.ts";
+import * as eventRepo from "./event.repository.ts";
+import type { JwtPayload } from "../auth/jwt.ts";
+import {
+    getFromCache,
+    setInCache,
+    deleteFromCache,
+    incrementVersionCounter,
+    getVersionCounter,
+} from "../infra/cache.ts";
 
-/** In-memory store — keyed by id for O(1) lookups. */
-const events = new Map<string, Event>();
-
-/** Private DRY helper to find an event or throw 404 */
-function findEventOrFail(id: string): Event {
-    const event = events.get(id);
-    if (!event) {
-        throw new HttpError(404, "Event not found");
-    }
-    return event;
-}
+/**
+ * Event service — orchestration & domain rules with Redis cache-aside.
+ * Persistence lives in event.repository.ts.
+ */
 
 /** Asserts that an event's startsAt date is in the future */
 function assertFutureDate(startsAt: string): void {
@@ -22,52 +23,106 @@ function assertFutureDate(startsAt: string): void {
     }
 }
 
-export function createEvent(input: CreateEventInput): Event {
-    assertFutureDate(input.startsAt);
+/** Asserts that the authenticated user owns the event or has ADMIN role (BOLA prevention) */
+function assertEventOwnership(event: Event, currentUser: JwtPayload): void {
+    if (currentUser.role !== "ADMIN" && event.organizerId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this event");
+    }
+}
 
-    const now = new Date().toISOString();
-    const event: Event = {
-        id: randomUUID(),
+/** Invalidates both the single event cache and all list pages */
+async function invalidateEventCache(id: string): Promise<void> {
+    await Promise.all([
+        deleteFromCache(`event:${id}`),
+        incrementVersionCounter("events:list:v"),
+    ]);
+}
+
+export async function createEvent(input: CreateEventInput, currentUser: JwtPayload): Promise<Event> {
+    assertFutureDate(input.startsAt);
+    const organizerId = currentUser.role === "ADMIN" && input.organizerId ? input.organizerId : currentUser.sub;
+    const created = await eventRepo.createEvent({
         ...input,
-        createdAt: now,
-        updatedAt: now,
-    };
-    events.set(event.id, event);
+        organizerId,
+    });
+
+    // Invalidate list cache by bumping the version counter
+    await incrementVersionCounter("events:list:v");
+
+    return created;
+}
+
+export async function listEvents(query: ListEventsQuery): Promise<PaginatedResult<Event>> {
+    const version = await getVersionCounter("events:list:v");
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const venue = query.venue ?? "";
+    const from = query.from ?? "";
+    const to = query.to ?? "";
+    const cacheKey = `events:list:${version}:${page}:${limit}:${venue}:${from}:${to}`;
+
+    const cached = await getFromCache<PaginatedResult<Event>>(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const result = await eventRepo.listEvents(query);
+    await setInCache(cacheKey, result);
+    return result;
+}
+
+export async function getEventById(id: string): Promise<Event> {
+    const cacheKey = `event:${id}`;
+    const cached = await getFromCache<Event>(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const event = await eventRepo.findEventById(id);
+    if (!event) {
+        throw new HttpError(404, "Event not found");
+    }
+
+    await setInCache(cacheKey, event);
     return event;
 }
 
-export function listEvents(page: number, limit: number): PaginatedResult<Event> {
-    const all = [...events.values()];
-    const offset = (page - 1) * limit;
-    return {
-        data: all.slice(offset, offset + limit),
-        total: all.length,
-        page,
-        limit,
-    };
-}
-
-export function getEventById(id: string): Event {
-    return findEventOrFail(id);
-}
-
-export function updateEvent(id: string, input: UpdateEventInput): Event {
-    const existing = findEventOrFail(id);
-
+export async function updateEvent(
+    id: string,
+    input: UpdateEventInput,
+    currentUser: JwtPayload,
+): Promise<Event> {
     if (input.startsAt !== undefined) {
         assertFutureDate(input.startsAt);
     }
+    const existing = await eventRepo.findEventById(id);
+    if (!existing) {
+        throw new HttpError(404, "Event not found");
+    }
 
-    const updated: Event = {
-        ...existing,
-        ...input,
-        updatedAt: new Date().toISOString(),
-    };
-    events.set(id, updated);
+    assertEventOwnership(existing, currentUser);
+
+    const updated = await eventRepo.updateEvent(id, input);
+    if (!updated) {
+        throw new HttpError(404, "Event not found");
+    }
+
+    await invalidateEventCache(id);
     return updated;
 }
 
-export function deleteEvent(id: string): void {
-    findEventOrFail(id);
-    events.delete(id);
+export async function deleteEvent(id: string, currentUser: JwtPayload): Promise<void> {
+    const existing = await eventRepo.findEventById(id);
+    if (!existing) {
+        throw new HttpError(404, "Event not found");
+    }
+
+    assertEventOwnership(existing, currentUser);
+
+    const deleted = await eventRepo.deleteEvent(id);
+    if (!deleted) {
+        throw new HttpError(404, "Event not found");
+    }
+
+    await invalidateEventCache(id);
 }

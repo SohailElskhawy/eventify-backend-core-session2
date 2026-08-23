@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eventify
+      POSTGRES_PASSWORD: "301077"
+      POSTGRES_DB: eventify
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventify -d eventify"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://eventify:301077@db:5432/eventify"
+      REDIS_URL: "redis://redis:6379"
+      JWT_ACCESS_SECRET: "super-secret-jwt-access-token-key-at-least-32-chars-long"
+      WEB_ORIGIN: "http://localhost:3000"
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    command: ["node", "dist/src/server.js"]
+
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://eventify:301077@db:5432/eventify"
+      REDIS_URL: "redis://redis:6379"
+      JWT_ACCESS_SECRET: "super-secret-jwt-access-token-key-at-least-32-chars-long"
+      WEB_ORIGIN: "http://localhost:3000"
+    command: ["node", "dist/src/worker.js"]
+
+volumes:
+  pg_data:

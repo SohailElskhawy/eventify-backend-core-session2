@@ -35,3 +35,20 @@ export function validateQuery(schema: ZodType) {
     };
 }
 
+/**
+ * Validates `req.params` against a Zod schema.
+ * On success the parsed value is available on req.params.
+ * On failure the Zod error is forwarded to the centralized error handler.
+ */
+export function validateParams(schema: ZodType) {
+    return (req: Request, _res: Response, next: NextFunction): void => {
+        const result = schema.safeParse(req.params);
+        if (!result.success) {
+            next(result.error);
+            return;
+        }
+        req.params = result.data as Record<string, string>;
+        next();
+    };
+}
+
