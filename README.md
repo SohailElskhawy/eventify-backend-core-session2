@@ -6,8 +6,9 @@
 
 ## 🌐 Live Deployment
 
-- **API Base URL**: `https://eventify-backend-core.onrender.com`
-- **Health Check**: `https://eventify-backend-core.onrender.com/health`
+- **API Base URL**: `https://eventify-66gj.onrender.com`
+- **Health Check**: `https://eventify-66gj.onrender.com/health`
+- **OpenAPI Specification**: `https://eventify-66gj.onrender.com/openapi.json`
 - **Database**: Neon Managed PostgreSQL
 - **Cache & Queues**: Upstash Managed Redis
 
