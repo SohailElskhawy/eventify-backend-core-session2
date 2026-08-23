@@ -5,6 +5,7 @@ import { eventRouter } from "./events/event.routes.ts";
 import { bookingRouter } from "./bookings/booking.routes.ts";
 import { notFound } from "./middleware/notFound.ts";
 import { errorHandler } from "./middleware/errorHandler.ts";
+import { openApiDocument } from "./docs/openapi.ts";
 
 export const app = express();
 
@@ -12,9 +13,13 @@ export const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-// ── Health check ────────────────────────────────────────────
+// ── Health & documentation ──────────────────────────────────
 app.get("/health", (_req, res) => {
     res.json({ status: "OK", uptime: process.uptime() });
+});
+
+app.get("/openapi.json", (_req, res) => {
+    res.json(openApiDocument);
 });
 
 // ── API routes ──────────────────────────────────────────────
