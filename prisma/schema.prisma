@@ -57,6 +57,10 @@ model Event {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   bookings    Booking[]
+
+  @@index([venue, startsAt])
+  @@index([startsAt])
+  @@index([organizerId])
 }
 
 model Booking {
@@ -70,4 +74,5 @@ model Booking {
 
   @@unique([userId, eventId])
   @@index([userId])
+  @@index([eventId, status, createdAt])
 }
