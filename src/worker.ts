@@ -1,60 +1,19 @@
 import { Worker } from "bullmq";
 import { createQueueConnection } from "./infra/queue-backend.ts";
-import { emailQueue, type BookingEmailJobPayload } from "./jobs/email.queue.ts";
+import type { BookingEmailJobPayload } from "./jobs/email.queue.ts";
 import type { WaitlistPromoteJobPayload } from "./jobs/waitlist.queue.ts";
-import * as bookingRepo from "./bookings/booking.repository.ts";
-import { runSerializableTransaction } from "./db/transaction.ts";
+import { processWaitlistPromotion } from "./jobs/processors/waitlist.processor.ts";
+import { processBookingEmail } from "./jobs/processors/email.processor.ts";
 import { prisma } from "./db/prisma.ts";
 
 console.log("🛠️ Starting Eventify Background Worker process...");
 
 /**
- * Waitlist promotion worker:
- * Processes cancellations, checks capacity atomically, and promotes the oldest waitlisted user.
+ * Waitlist promotion worker
  */
 const waitlistWorker = new Worker<WaitlistPromoteJobPayload>(
     "waitlist-promote",
-    async (job) => {
-        const { eventId } = job.data;
-        console.log(`[Worker:waitlist-promote] Processing waitlist check for event: ${eventId}`);
-
-        const promotedBooking = await runSerializableTransaction(async (tx) => {
-            // 1. Re-check capacity atomically inside the transaction
-            const [confirmedCount, event] = await Promise.all([
-                bookingRepo.countConfirmedBookingsTx(tx, eventId),
-                bookingRepo.findEventCapacityTx(tx, eventId),
-            ]);
-
-            if (confirmedCount >= event.capacity) {
-                console.log(
-                    `[Worker:waitlist-promote] Event ${eventId} is at full capacity (${confirmedCount}/${event.capacity}). No promotion available.`,
-                );
-                return null;
-            }
-
-            // 2. Find the oldest WAITLISTED booking
-            const oldestWaitlist = await bookingRepo.findOldestWaitlistedBookingTx(tx, eventId);
-            if (!oldestWaitlist) {
-                console.log(`[Worker:waitlist-promote] No waitlisted bookings found for event ${eventId}.`);
-                return null;
-            }
-
-            // 3. Promote to CONFIRMED
-            const promoted = await bookingRepo.updateBookingStatusTx(tx, oldestWaitlist.id, "CONFIRMED");
-            console.log(
-                `[Worker:waitlist-promote] ✅ Promoted booking ${promoted.id} (user: ${promoted.userId}) to CONFIRMED.`,
-            );
-            return promoted;
-        });
-
-        // 4. Enqueue confirmation email for the newly promoted booking
-        if (promotedBooking) {
-            await emailQueue.add("confirmation", { bookingId: promotedBooking.id });
-            console.log(
-                `[Worker:waitlist-promote] ✉️ Enqueued confirmation email job for booking ${promotedBooking.id}`,
-            );
-        }
-    },
+    processWaitlistPromotion,
     {
         connection: createQueueConnection(),
         concurrency: 5,
@@ -70,26 +29,11 @@ waitlistWorker.on("completed", (job) => {
 });
 
 /**
- * Email notification worker:
- * Simulates sending confirmation email (or logs payload).
+ * Email notification worker
  */
 const emailWorker = new Worker<BookingEmailJobPayload>(
     "booking-email",
-    async (job) => {
-        const { bookingId } = job.data;
-        console.log(`[Worker:booking-email] 📧 Sending booking confirmation email for bookingId: ${bookingId}...`);
-        // Simulates email transport delivery
-        console.log(
-            JSON.stringify({
-                type: "email_sent",
-                queue: "booking-email",
-                jobId: job.id,
-                bookingId,
-                status: "DELIVERED",
-                timestamp: new Date().toISOString(),
-            }),
-        );
-    },
+    processBookingEmail,
     {
         connection: createQueueConnection(),
         concurrency: 5,
@@ -122,5 +66,14 @@ async function shutdown(signal: string): Promise<void> {
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
+
+process.on("unhandledRejection", (reason) => {
+    console.error("[Worker] Unhandled Promise Rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+    console.error("[Worker] Uncaught Exception:", error);
+    void shutdown("uncaughtException");
+});
 
 console.log("🚀 Eventify Background Worker is running and listening for jobs.");

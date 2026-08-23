@@ -80,16 +80,20 @@ export async function createBooking(userId: string, input: CreateBookingInput): 
 
 // ── Read & Cancel (with Ownership checks & Waitlist Promotion) ───────────────────
 
+/** Asserts that the authenticated user owns the booking or has ADMIN role (BOLA prevention) */
+function assertBookingOwnership(booking: Booking, currentUser: JwtPayload): void {
+    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this booking");
+    }
+}
+
 export async function getBookingById(id: string, currentUser: JwtPayload): Promise<Booking> {
     const booking = await bookingRepo.findBookingById(id);
     if (!booking) {
         throw new HttpError(404, "Booking not found");
     }
 
-    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
-        throw new HttpError(403, "Forbidden: You do not own this booking");
-    }
-
+    assertBookingOwnership(booking, currentUser);
     return booking;
 }
 
@@ -99,9 +103,7 @@ export async function cancelBooking(id: string, currentUser: JwtPayload): Promis
         throw new HttpError(404, "Booking not found");
     }
 
-    if (currentUser.role !== "ADMIN" && booking.userId !== currentUser.sub) {
-        throw new HttpError(403, "Forbidden: You do not own this booking");
-    }
+    assertBookingOwnership(booking, currentUser);
 
     const wasConfirmed = booking.status === "CONFIRMED";
     const cancelled = await bookingRepo.softCancelBooking(id);

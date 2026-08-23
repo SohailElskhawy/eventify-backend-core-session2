@@ -23,6 +23,21 @@ function assertFutureDate(startsAt: string): void {
     }
 }
 
+/** Asserts that the authenticated user owns the event or has ADMIN role (BOLA prevention) */
+function assertEventOwnership(event: Event, currentUser: JwtPayload): void {
+    if (currentUser.role !== "ADMIN" && event.organizerId !== currentUser.sub) {
+        throw new HttpError(403, "Forbidden: You do not own this event");
+    }
+}
+
+/** Invalidates both the single event cache and all list pages */
+async function invalidateEventCache(id: string): Promise<void> {
+    await Promise.all([
+        deleteFromCache(`event:${id}`),
+        incrementVersionCounter("events:list:v"),
+    ]);
+}
+
 export async function createEvent(input: CreateEventInput, currentUser: JwtPayload): Promise<Event> {
     assertFutureDate(input.startsAt);
     const organizerId = currentUser.role === "ADMIN" && input.organizerId ? input.organizerId : currentUser.sub;
@@ -85,21 +100,14 @@ export async function updateEvent(
         throw new HttpError(404, "Event not found");
     }
 
-    if (currentUser.role !== "ADMIN" && existing.organizerId !== currentUser.sub) {
-        throw new HttpError(403, "Forbidden: You do not own this event");
-    }
+    assertEventOwnership(existing, currentUser);
 
     const updated = await eventRepo.updateEvent(id, input);
     if (!updated) {
         throw new HttpError(404, "Event not found");
     }
 
-    // Delete-on-write invalidation: delete single event cache & bump list version
-    await Promise.all([
-        deleteFromCache(`event:${id}`),
-        incrementVersionCounter("events:list:v"),
-    ]);
-
+    await invalidateEventCache(id);
     return updated;
 }
 
@@ -109,18 +117,12 @@ export async function deleteEvent(id: string, currentUser: JwtPayload): Promise<
         throw new HttpError(404, "Event not found");
     }
 
-    if (currentUser.role !== "ADMIN" && existing.organizerId !== currentUser.sub) {
-        throw new HttpError(403, "Forbidden: You do not own this event");
-    }
+    assertEventOwnership(existing, currentUser);
 
     const deleted = await eventRepo.deleteEvent(id);
     if (!deleted) {
         throw new HttpError(404, "Event not found");
     }
 
-    // Delete-on-write invalidation: delete single event cache & bump list version
-    await Promise.all([
-        deleteFromCache(`event:${id}`),
-        incrementVersionCounter("events:list:v"),
-    ]);
+    await invalidateEventCache(id);
 }
