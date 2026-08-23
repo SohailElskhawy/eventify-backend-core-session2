@@ -27,7 +27,7 @@ services:
       timeout: 5s
       retries: 5
 
-  app:
+  api:
     build: .
     restart: unless-stopped
     depends_on:
@@ -38,12 +38,27 @@ services:
     environment:
       DATABASE_URL: "postgresql://eventify:301077@db:5432/eventify"
       REDIS_URL: "redis://redis:6379"
+      JWT_ACCESS_SECRET: "super-secret-jwt-access-token-key-at-least-32-chars-long"
+      WEB_ORIGIN: "http://localhost:3000"
       PORT: 3000
     ports:
       - "3000:3000"
-    volumes:
-      - ./src:/app/src
-    command: ["node", "--watch", "src/server.ts"]
+    command: ["node", "dist/src/server.js"]
+
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://eventify:301077@db:5432/eventify"
+      REDIS_URL: "redis://redis:6379"
+      JWT_ACCESS_SECRET: "super-secret-jwt-access-token-key-at-least-32-chars-long"
+      WEB_ORIGIN: "http://localhost:3000"
+    command: ["node", "dist/src/worker.js"]
 
 volumes:
   pg_data:
