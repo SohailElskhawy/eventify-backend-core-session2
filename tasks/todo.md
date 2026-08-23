@@ -22,15 +22,15 @@ Plan-first rule: this file is the PR's first commit. Check items off as you go.
   - [x] Requests recover after window expiry
 
 ## Phase 3 — Cache-Aside & Cache Metrics (Task 2)
-- [ ] Implement cache metrics collector with `{ hits, misses, ratio }` tracking
-- [ ] Add periodic logging (structured JSON via `console.log` every 60s or 100 lookups)
-- [ ] Update `src/events/event.service.ts` with cache-aside read path:
-  - [ ] `getEventById`: Read `event:{id}` from Redis; on miss fetch from DB and set with 60s TTL + jitter
-  - [ ] `listEvents`: Read `events:list:{v}:{page}` from Redis; on miss fetch from DB and cache
-- [ ] Implement cache invalidation (delete-on-write & list versioning):
-  - [ ] `updateEvent`: `DEL event:{id}` and `INCR events:list:v`
-  - [ ] `deleteEvent`: `DEL event:{id}` and `INCR events:list:v`
-  - [ ] `createEvent`: `INCR events:list:v`
+- [x] Implement cache metrics collector with `{ hits, misses, ratio }` tracking
+- [x] Add periodic logging (structured JSON via `console.log` every 60s or 100 lookups)
+- [x] Update `src/events/event.service.ts` with cache-aside read path:
+  - [x] `getEventById`: Read `event:{id}` from Redis; on miss fetch from DB and set with 60s TTL + jitter
+  - [x] `listEvents`: Read `events:list:{v}:{page}` from Redis; on miss fetch from DB and cache
+- [x] Implement cache invalidation (delete-on-write & list versioning):
+  - [x] `updateEvent`: `DEL event:{id}` and `INCR events:list:v`
+  - [x] `deleteEvent`: `DEL event:{id}` and `INCR events:list:v`
+  - [x] `createEvent`: `INCR events:list:v`
 
 ## Phase 4 — Background Jobs & Workers (Option A: Waitlist Promotion) (Task 1)
 - [ ] Update booking transaction in `src/bookings/booking.service.ts`:
