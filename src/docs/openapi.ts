@@ -58,9 +58,7 @@ export const singleUserResponseSchema = z.object({
     data: userModelSchema,
 });
 
-export const singleEventResponseSchema = z.object({
-    data: eventModelSchema,
-});
+export const singleEventResponseSchema = eventModelSchema;
 
 export const paginatedEventsResponseSchema = z.object({
     data: z.array(eventModelSchema),
@@ -69,9 +67,7 @@ export const paginatedEventsResponseSchema = z.object({
     limit: z.number().int(),
 });
 
-export const singleBookingResponseSchema = z.object({
-    data: bookingModelSchema,
-});
+export const singleBookingResponseSchema = bookingModelSchema;
 
 export const healthResponseSchema = z.object({
     status: z.string(),

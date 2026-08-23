@@ -20,8 +20,8 @@ describe("Rebooking & Cancellation Semantics Integration Tests", () => {
             .send({ eventId: event.id });
 
         expect(bookRes1.status).toBe(201);
-        expect(bookRes1.body.data.status).toBe("CONFIRMED");
-        const bookingId = bookRes1.body.data.id;
+        expect(bookRes1.body.status).toBe("CONFIRMED");
+        const bookingId = bookRes1.body.id;
 
         // 2. Soft-cancel the booking -> status becomes CANCELLED
         const cancelRes = await request(app)
@@ -29,7 +29,7 @@ describe("Rebooking & Cancellation Semantics Integration Tests", () => {
             .set(attendee.authHeader);
 
         expect(cancelRes.status).toBe(200);
-        expect(cancelRes.body.data.status).toBe("CANCELLED");
+        expect(cancelRes.body.status).toBe("CANCELLED");
 
         // 3. Rebook the same event -> must succeed and flip the CANCELLED row back to CONFIRMED
         const rebookRes = await request(app)
@@ -38,8 +38,8 @@ describe("Rebooking & Cancellation Semantics Integration Tests", () => {
             .send({ eventId: event.id });
 
         expect(rebookRes.status).toBe(201);
-        expect(rebookRes.body.data.id).toBe(bookingId); // Same row flipped
-        expect(rebookRes.body.data.status).toBe("CONFIRMED");
+        expect(rebookRes.body.id).toBe(bookingId); // Same row flipped
+        expect(rebookRes.body.status).toBe("CONFIRMED");
     });
 
     it("should return 403 Forbidden when a user attempts to cancel another user's booking (BOLA)", async () => {
@@ -58,7 +58,7 @@ describe("Rebooking & Cancellation Semantics Integration Tests", () => {
             .send({ eventId: event.id });
 
         expect(bookRes.status).toBe(201);
-        const bookingId = bookRes.body.data.id;
+        const bookingId = bookRes.body.id;
 
         // User 2 attempts to cancel User 1's booking
         const cancelRes = await request(app)

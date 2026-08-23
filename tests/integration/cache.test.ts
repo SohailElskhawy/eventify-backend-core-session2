@@ -19,7 +19,7 @@ describe("Cache Invalidation Integration Tests", () => {
         // 1. First read — cache miss in Redis, fetched from DB and populated into Redis
         const res1 = await request(app).get(`/v1/events/${event.id}`);
         expect(res1.status).toBe(200);
-        expect(res1.body.data.title).toBe("Original Cacheable Title");
+        expect(res1.body.title).toBe("Original Cacheable Title");
 
         // Verify key exists in Redis
         if (redis.isOpen) {
@@ -38,7 +38,7 @@ describe("Cache Invalidation Integration Tests", () => {
             .send({ title: "Updated Fresh Title" });
 
         expect(updateRes.status).toBe(200);
-        expect(updateRes.body.data.title).toBe("Updated Fresh Title");
+        expect(updateRes.body.title).toBe("Updated Fresh Title");
 
         // 3. Verify that the cache key was deleted in Redis
         if (redis.isOpen) {
@@ -49,6 +49,6 @@ describe("Cache Invalidation Integration Tests", () => {
         // 4. Next read must return the fresh updated data from DB and re-cache it
         const res2 = await request(app).get(`/v1/events/${event.id}`);
         expect(res2.status).toBe(200);
-        expect(res2.body.data.title).toBe("Updated Fresh Title");
+        expect(res2.body.title).toBe("Updated Fresh Title");
     });
 });

@@ -24,9 +24,9 @@ describe("Events Integration Tests", () => {
                 });
 
             expect(res.status).toBe(201);
-            expect(res.body.data).toBeDefined();
-            expect(res.body.data.title).toBe("Tech Conference 2026");
-            expect(res.body.data.organizerId).toBe(organizer.user.id);
+            expect(res.body).toBeDefined();
+            expect(res.body.title).toBe("Tech Conference 2026");
+            expect(res.body.organizerId).toBe(organizer.user.id);
         });
 
         it("should allow an ADMIN to create an event with status 201", async () => {
@@ -45,8 +45,8 @@ describe("Events Integration Tests", () => {
                 });
 
             expect(res.status).toBe(201);
-            expect(res.body.data).toBeDefined();
-            expect(res.body.data.title).toBe("Admin Super Summit");
+            expect(res.body).toBeDefined();
+            expect(res.body.title).toBe("Admin Super Summit");
         });
 
         it("should return 403 Forbidden when an ATTENDEE tries to create an event", async () => {
@@ -58,88 +58,115 @@ describe("Events Integration Tests", () => {
                 .send({
                     title: "Unauthorized Event Attempt",
                     description: "This should be blocked by role authorization middleware.",
-                    venue: "Secret Garden",
+                    venue: "Rooftop",
                     startsAt: futureDate,
-                    capacity: 20,
+                    capacity: 50,
                     priceCents: 1000,
                 });
 
             expect(res.status).toBe(403);
         });
 
-        it("should return 401 Unauthorized when an unauthenticated user tries to create an event", async () => {
+        it("should return 401 Unauthorized when unauthenticated request tries to create an event", async () => {
             const res = await request(app)
                 .post("/v1/events")
                 .send({
                     title: "No Auth Event",
-                    description: "This request has no authorization header.",
-                    venue: "Public Park",
+                    description: "No auth header attached.",
                     startsAt: futureDate,
                     capacity: 50,
-                    priceCents: 1500,
+                    priceCents: 0,
                 });
 
             expect(res.status).toBe(401);
         });
+
+        it("should return 400 Bad Request when startsAt is in the past", async () => {
+            const organizer = await createTestUser({ role: "ORGANIZER" });
+            const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+            const res = await request(app)
+                .post("/v1/events")
+                .set(organizer.authHeader)
+                .send({
+                    title: "Past Event",
+                    description: "Should fail validation.",
+                    startsAt: pastDate,
+                    capacity: 50,
+                    priceCents: 0,
+                });
+
+            expect(res.status).toBe(400);
+        });
     });
 
     describe("Event Ownership & BOLA Checks (PATCH & DELETE)", () => {
-        const futureDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
-
         it("should allow the event owner (ORGANIZER) to update their event", async () => {
             const organizer = await createTestUser({ role: "ORGANIZER" });
             const event = await createTestEvent({
                 organizerId: organizer.user.id,
-                startsAt: futureDate,
+                title: "Original Title",
             });
 
             const res = await request(app)
                 .patch(`/v1/events/${event.id}`)
                 .set(organizer.authHeader)
-                .send({
-                    title: "Updated Event Title By Owner",
-                });
+                .send({ title: "Updated Title by Owner" });
 
             expect(res.status).toBe(200);
-            expect(res.body.data.title).toBe("Updated Event Title By Owner");
+            expect(res.body.title).toBe("Updated Title by Owner");
         });
 
-        it("should return 403 Forbidden when another ORGANIZER tries to update the event (BOLA)", async () => {
-            const owner = await createTestUser({ role: "ORGANIZER" });
-            const intruder = await createTestUser({ role: "ORGANIZER" });
+        it("should return 403 Forbidden when an ORGANIZER tries to update another ORGANIZER's event (BOLA)", async () => {
+            const ownerOrganizer = await createTestUser({ role: "ORGANIZER" });
+            const attackerOrganizer = await createTestUser({ role: "ORGANIZER" });
+
             const event = await createTestEvent({
-                organizerId: owner.user.id,
-                startsAt: futureDate,
+                organizerId: ownerOrganizer.user.id,
+                title: "Owner's Event",
             });
 
             const res = await request(app)
                 .patch(`/v1/events/${event.id}`)
-                .set(intruder.authHeader)
-                .send({
-                    title: "Hijacked Event Title",
-                });
+                .set(attackerOrganizer.authHeader)
+                .send({ title: "Hacked Title" });
+
+            expect(res.status).toBe(403);
+        });
+
+        it("should return 403 Forbidden when an ORGANIZER tries to delete another ORGANIZER's event (BOLA)", async () => {
+            const ownerOrganizer = await createTestUser({ role: "ORGANIZER" });
+            const attackerOrganizer = await createTestUser({ role: "ORGANIZER" });
+
+            const event = await createTestEvent({
+                organizerId: ownerOrganizer.user.id,
+            });
+
+            const res = await request(app)
+                .delete(`/v1/events/${event.id}`)
+                .set(attackerOrganizer.authHeader);
 
             expect(res.status).toBe(403);
         });
 
         it("should allow an ADMIN to update or delete any event regardless of owner", async () => {
-            const owner = await createTestUser({ role: "ORGANIZER" });
+            const organizer = await createTestUser({ role: "ORGANIZER" });
             const admin = await createTestUser({ role: "ADMIN" });
             const event = await createTestEvent({
-                organizerId: owner.user.id,
-                startsAt: futureDate,
+                organizerId: organizer.user.id,
+                title: "Organizer Event",
             });
 
+            // Admin Update
             const patchRes = await request(app)
                 .patch(`/v1/events/${event.id}`)
                 .set(admin.authHeader)
-                .send({
-                    title: "Admin Modified Title",
-                });
+                .send({ title: "Admin Override Title" });
 
             expect(patchRes.status).toBe(200);
-            expect(patchRes.body.data.title).toBe("Admin Modified Title");
+            expect(patchRes.body.title).toBe("Admin Override Title");
 
+            // Admin Delete
             const deleteRes = await request(app)
                 .delete(`/v1/events/${event.id}`)
                 .set(admin.authHeader);
@@ -151,15 +178,20 @@ describe("Events Integration Tests", () => {
     describe("Public Read Endpoints", () => {
         it("should allow public unauthenticated access to list events and get by id", async () => {
             const organizer = await createTestUser({ role: "ORGANIZER" });
-            const event = await createTestEvent({ organizerId: organizer.user.id });
+            await createTestEvent({
+                organizerId: organizer.user.id,
+                title: "Public Event 1",
+            });
 
             const listRes = await request(app).get("/v1/events");
             expect(listRes.status).toBe(200);
             expect(Array.isArray(listRes.body.data)).toBe(true);
+            expect(listRes.body.data.length).toBeGreaterThanOrEqual(1);
 
-            const getRes = await request(app).get(`/v1/events/${event.id}`);
+            const eventId = listRes.body.data[0].id;
+            const getRes = await request(app).get(`/v1/events/${eventId}`);
             expect(getRes.status).toBe(200);
-            expect(getRes.body.data.id).toBe(event.id);
+            expect(getRes.body.id).toBe(eventId);
         });
     });
 });

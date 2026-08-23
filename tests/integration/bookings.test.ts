@@ -20,10 +20,10 @@ describe("Bookings Integration Tests", () => {
                 .send({ eventId: event.id });
 
             expect(res.status).toBe(201);
-            expect(res.body.data).toBeDefined();
-            expect(res.body.data.userId).toBe(attendee.user.id);
-            expect(res.body.data.eventId).toBe(event.id);
-            expect(res.body.data.status).toBe("CONFIRMED");
+            expect(res.body).toBeDefined();
+            expect(res.body.userId).toBe(attendee.user.id);
+            expect(res.body.eventId).toBe(event.id);
+            expect(res.body.status).toBe("CONFIRMED");
         });
 
         it("should place the booking on WAITLISTED status when the event capacity is reached", async () => {
@@ -43,7 +43,7 @@ describe("Bookings Integration Tests", () => {
                 .send({ eventId: event.id });
 
             expect(res1.status).toBe(201);
-            expect(res1.body.data.status).toBe("CONFIRMED");
+            expect(res1.body.status).toBe("CONFIRMED");
 
             // Second user attempts to book the full event -> WAITLISTED
             const res2 = await request(app)
@@ -52,7 +52,7 @@ describe("Bookings Integration Tests", () => {
                 .send({ eventId: event.id });
 
             expect(res2.status).toBe(201);
-            expect(res2.body.data.status).toBe("WAITLISTED");
+            expect(res2.body.status).toBe("WAITLISTED");
         });
 
         it("should return 409 Conflict when a user tries to book the same event twice", async () => {
