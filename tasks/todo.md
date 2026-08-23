@@ -11,15 +11,15 @@ Plan-first rule: this file is the PR's first commit. Check items off as you go.
 - [x] Implement `src/infra/queue-backend.ts` (Dedicated connection wrapped for BullMQ v6)
 
 ## Phase 2 — Redis Rate Limiting Rollout (Task 3)
-- [ ] Implement fixed-window rate limiter middleware in `src/middleware/rateLimiter.ts`:
-  - [ ] Key format: `rl:{identifier}:{path}:{window}`
-  - [ ] Support custom key generators (IP address vs. Authenticated User ID)
-  - [ ] Return standard 429 Too Many Requests with `Retry-After` header when limit exceeded
-- [ ] Apply rate limiter to `POST /v1/auth/login` (strict, per-IP limit: e.g., 5 attempts / 60s)
-- [ ] Apply rate limiter to `POST /v1/bookings` (per-user limit: key by `req.user.sub`, e.g., 10 bookings / 60s)
-- [ ] Create verification script `scripts/verify-rate-limit.ts` to prove:
-  - [ ] Burst beyond threshold returns 429 status code
-  - [ ] Requests recover after window expiry
+- [x] Implement fixed-window rate limiter middleware in `src/middleware/rateLimiter.ts`:
+  - [x] Key format: `rl:{identifier}:{path}:{window}`
+  - [x] Support custom key generators (IP address vs. Authenticated User ID)
+  - [x] Return standard 429 Too Many Requests with `Retry-After` header when limit exceeded
+- [x] Apply rate limiter to `POST /v1/auth/login` (strict, per-IP limit: e.g., 5 attempts / 60s)
+- [x] Apply rate limiter to `POST /v1/bookings` (per-user limit: key by `req.user.sub`, e.g., 10 bookings / 60s)
+- [x] Create verification script `scripts/verify-rate-limit.ts` to prove:
+  - [x] Burst beyond threshold returns 429 status code
+  - [x] Requests recover after window expiry
 
 ## Phase 3 — Cache-Aside & Cache Metrics (Task 2)
 - [ ] Implement cache metrics collector with `{ hits, misses, ratio }` tracking
