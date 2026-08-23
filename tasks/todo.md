@@ -3,12 +3,12 @@
 Plan-first rule: this file is the PR's first commit. Check items off as you go.
 
 ## Phase 1 — Infrastructure & Dependencies (Task 2 & 3 Prereqs)
-- [ ] Install Redis client (`redis`) and BullMQ (`bullmq`) dependencies
-- [ ] Update `docker-compose.yml` to include `redis:8` service on port `6379`
-- [ ] Update `src/config.ts` with validated `REDIS_URL` in `envSchema`
-- [ ] Update `.env.example` and `.env` with `REDIS_URL=redis://localhost:6379`
-- [ ] Implement `src/infra/redis.ts` (Node-redis client for cache and rate limiter)
-- [ ] Implement `src/infra/queue-backend.ts` (Dedicated connection wrapped for BullMQ v6)
+- [x] Install Redis client (`redis`) and BullMQ (`bullmq`) dependencies
+- [x] Update `docker-compose.yml` to include `redis:8` service on port `6379`
+- [x] Update `src/config.ts` with validated `REDIS_URL` in `envSchema`
+- [x] Update `.env.example` and `.env` with `REDIS_URL=redis://localhost:6379`
+- [x] Implement `src/infra/redis.ts` (Node-redis client for cache and rate limiter)
+- [x] Implement `src/infra/queue-backend.ts` (Dedicated connection wrapped for BullMQ v6)
 
 ## Phase 2 — Redis Rate Limiting Rollout (Task 3)
 - [ ] Implement fixed-window rate limiter middleware in `src/middleware/rateLimiter.ts`:
